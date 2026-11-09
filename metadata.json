@@ -1,0 +1,6 @@
+{
+  "name": "Quran Tutors Academy CMS",
+  "description": "Custom CMS and high-performance learning platform for Quran Tutors Academy, featuring tutoring schedules, progress tracking, tutor & student portals, and an interactive virtual classroom with WebRTC video simulation.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
