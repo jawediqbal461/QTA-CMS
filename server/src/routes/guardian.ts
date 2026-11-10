@@ -8,6 +8,7 @@ import { asyncHandler } from "../lib/asyncHandler.js";
 import { publishedTutorWhere } from "../lib/tutorProfile.js";
 import { availableStarts } from "../lib/availableStarts.js";
 import { canJoinLesson, lessonSummary, meetingWindowMessage } from "../lib/lessonAccess.js";
+import { notifyBooking } from "../lib/notifications.js";
 import { activeStatuses, availabilityMatcher, BOOKING_HORIZON, LESSON_MINUTES, MINUTE, SLOT_STEP } from "../lib/scheduling.js";
 
 export const guardianRouter = Router();
@@ -49,7 +50,7 @@ guardianRouter.post("/students", requireRole("GUARDIAN"), asyncHandler(async (re
 
 const bookingSelect = {
   id: true, tutorId: true, studentId: true, scheduledAtUtc: true, durationMinutes: true, status: true,
-  student: { select: { fullName: true } },
+  student: { select: { id: true, fullName: true } },
   tutor: { select: { account: { select: { fullName: true } } } },
   ...lessonSummary,
 } satisfies Prisma.BookingSelect;
@@ -157,10 +158,12 @@ guardianRouter.post("/bookings", asyncHandler(async (req, res) => {
       return booking;
     }
     await validateTime(tx, academyId, tutorId, studentId, start, LESSON_MINUTES);
-    return tx.booking.create({
+    const booking = await tx.booking.create({
       data: { id, academyId, tutorId, studentId, scheduledAtUtc: start, durationMinutes: LESSON_MINUTES },
       select: bookingSelect,
     });
+    await notifyBooking(tx, { ...booking, academyId }, "booked");
+    return booking;
   });
 }));
 
@@ -189,13 +192,17 @@ guardianRouter.patch("/bookings/:id", asyncHandler(async (req, res) => {
       throw new BookingError(409, "This booking can no longer be changed. Refresh your bookings.");
     }
     if (change.action === "cancel") {
-      return tx.booking.update({ where: { id: booking.id }, data: { status: "CANCELLED", meetingUrl: null }, select: bookingSelect });
+      const cancelled = await tx.booking.update({ where: { id: booking.id }, data: { status: "CANCELLED", meetingUrl: null }, select: bookingSelect });
+      await notifyBooking(tx, { ...cancelled, academyId }, "cancelled");
+      return cancelled;
     }
     const start = new Date(change.scheduledAtUtc);
     if (current === start.getTime()) return booking;
     await validateTime(tx, academyId, booking.tutorId, booking.studentId, start, booking.durationMinutes, booking.id);
-    return tx.booking.update({
+    const moved = await tx.booking.update({
       where: { id: booking.id }, data: { scheduledAtUtc: start, status: "RESCHEDULED", meetingUrl: null }, select: bookingSelect,
     });
+    await notifyBooking(tx, { ...moved, academyId }, "rescheduled");
+    return moved;
   });
 }));

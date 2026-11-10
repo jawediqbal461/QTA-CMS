@@ -191,7 +191,22 @@ Tutors add a private HTTPS meeting link to each booking. The API releases the li
 
 Tutors mark a lesson completed after it starts, or mark a no-show after the scheduled end. Completion records guardian-visible notes and one progress entry in the same transaction. Guardians can review the results in their lesson history.
 
+## Account verification and class notifications
+
+Apply migration `0004_verified_accounts_notifications` and configure the following in `server/.env` before deploying this release:
+
+- `PUBLIC_APP_URL` is the HTTPS origin for login and verification links. Use `https://new.qurantutorsacademy.com` for staging.
+- `RESEND_API_KEY` is the server-only sending key. `MAIL_FROM` must use a verified sender domain. Configure the domain in Resend and validate delivery to a controlled inbox before inviting users.
+
+Check `curl -fsS https://new.qurantutorsacademy.com/api/health/email` after restarting the API. It returns `configured` when the required configuration is present, and HTTP 503 otherwise. The check confirms configuration only. Verify provider delivery to a controlled inbox as a separate release gate. Signup refuses to create an account when the mail configuration is missing or invalid.
+
+Student, guardian, and teacher registration queues a verification email and returns no session. The confirmation link expires after 24 hours. Signing in with the correct password on an unverified account queues another link, with deduplication per five-minute window. Existing student, guardian, and teacher sessions also need email verification. Bootstrap admin access continues to work. Guardian-managed learners use the guardian's account and inbox.
+
+New and changed bookings queue a portal alert and an email. Reminders are scheduled 15 minutes before class and obsolete reminders are withdrawn when a booking changes or closes. The worker runs in the API process and retries failed delivery. Existing bookings still appear in the desk and get notifications on their next booking change.
+
 ## Pilot operations and restore rehearsal
+
+**Admin → Academy Administration** lists live teacher, student, and guardian accounts. Staff can inspect account IDs and linked guardians, edit profile details, and suspend, remove, or restore access. Removing an account from the academy revokes its membership and preserves its bookings and audit history. Review any affected upcoming bookings separately. **Prototype content tools** opens the older browser-local CMS.
 
 Open **Admin → Lesson recovery and audit** to resolve a past booking that still shows as active. Confirm what happened with the tutor and family, choose No-show or Cancelled, and enter a short internal reason. The tutor and family see the new status. The audit entry records who made the change and why. If a replacement lesson is needed, have the guardian or adult learner book a new slot.
 

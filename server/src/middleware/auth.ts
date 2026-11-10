@@ -32,9 +32,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   try {
     const membership = await prisma.academyMembership.findUnique({
       where: { academyId_accountId: { academyId: payload.academyId, accountId: payload.accountId } },
+      include: { account: { select: { emailVerifiedAt: true } } },
     });
     if (!membership || membership.status !== "ACTIVE") {
       return res.status(401).json({ error: "Session is no longer valid" });
+    }
+    if (!membership.account.emailVerifiedAt && membership.role !== "PLATFORM_ADMIN" && membership.role !== "ACADEMY_ADMIN") {
+      return res.status(401).json({ error: "Verify your email before accessing the portal." });
     }
     req.session = { accountId: payload.accountId, academyId: payload.academyId, role: membership.role };
     next();

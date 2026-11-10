@@ -1,6 +1,6 @@
 import { createElement, useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, GraduationCap, LogIn, UserPlus, Users } from "lucide-react";
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { accountRequest, ApiError, getStoredAdminToken, request } from "../lib/api";
 import { useSEO } from "../hooks/useSEO";
 
@@ -23,7 +23,7 @@ type Profile = Tutor & {
 type Student = { id: string; fullName: string };
 type Booking = {
   id: string; tutorId: string; scheduledAtUtc: string; durationMinutes: number; status: string;
-  student: { fullName: string }; tutor?: { account: { fullName: string } };
+  student: { id: string; fullName: string }; tutor?: { account: { fullName: string } };
   lessonSession?: { endedAt: string | null; tutorNotes: string | null } | null;
   progressEntry?: {
     currentBook: string; currentChapter: string; currentVerse: number | null;
@@ -35,7 +35,9 @@ const panel = "space-y-4 rounded-xl border border-neutral-700 p-5";
 const button = "rounded bg-emerald-400 px-3 py-2 font-semibold text-neutral-950 disabled:opacity-50";
 const input = "block w-full rounded border border-neutral-600 bg-neutral-900 p-2 text-white";
 const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const localTime = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+const localTime = (iso: string, timeZone?: string) => new Date(iso).toLocaleString(undefined, {
+  dateStyle: "medium", timeStyle: "short", timeZone,
+});
 const message = (error: unknown) => error instanceof Error ? error.message : "Something went wrong.";
 
 function useResource<T>(path: string | null, token?: string, version = 0) {
@@ -138,7 +140,7 @@ function profileData(form: FormData) {
   };
 }
 
-function ProfileFields({ profile }: { profile?: Profile }) {
+function ProfileFields({ profile }: { profile?: Pick<Profile, "specialties" | "languages" | "experienceYears" | "hourlyRate" | "bio" | "qualifications"> }) {
   return <>
     <label className="block">Subjects (comma separated)<input className={input} name="specialties" required defaultValue={profile?.specialties.join(", ")} /></label>
     <label className="block">Teaching languages (comma separated)<input className={input} name="languages" required defaultValue={profile?.languages.join(", ")} /></label>
@@ -151,9 +153,14 @@ function ProfileFields({ profile }: { profile?: Profile }) {
 
 function AccountForm({ role, register, onSession }: { role: Role; register: boolean; onSession: (token: string) => void }) {
   const action = useAction();
+  const [verificationSent, setVerificationSent] = useState(false);
   const [params] = useSearchParams();
   const paths = accountPaths[role];
   const query = params.toString() ? `?${params.toString()}` : "";
+  if (verificationSent) return <div className="space-y-4 rounded-xl border border-emerald-500/30 p-4">
+    <p role="status">Check your email for a verification link. Verify your address before signing in.</p>
+    <Link className="text-emerald-300 underline" to={paths.login + query}>Continue to sign in</Link>
+  </div>;
   return <form className="space-y-4 text-xs [&_label]:space-y-1.5 [&_label]:font-bold [&_label]:text-neutral-300 [&_label>input:not([type=checkbox])]:rounded-xl [&_label>input:not([type=checkbox])]:border-neutral-800 [&_label>input:not([type=checkbox])]:bg-neutral-950 [&_label>input:not([type=checkbox])]:px-3.5 [&_label>input:not([type=checkbox])]:py-2.5 [&_label>textarea]:rounded-xl [&_label>textarea]:border-neutral-800 [&_label>textarea]:bg-neutral-950 [&_input]:focus-visible:outline-emerald-500 [&_textarea]:focus-visible:outline-emerald-500" onSubmit={(event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -164,10 +171,13 @@ function AccountForm({ role, register, onSession }: { role: Role; register: bool
         ...(role === "STUDENT" ? { adult: form.get("adult") === "on" } : {}),
         ...(role === "TUTOR" ? profileData(form) : {}),
       } : data;
-      const result = await request<{ token: string; account: { role: string } }>(
-        register ? `/auth/register/${role.toLowerCase()}` : "/auth/login",
-        { method: "POST", body: JSON.stringify(payload) },
-      );
+      if (register) {
+        await request(`/auth/register/${role.toLowerCase()}`, { method: "POST", body: JSON.stringify(payload) });
+        setVerificationSent(true);
+        return;
+      }
+      const result = await request<{ token: string; account: { role: string } }>("/auth/login",
+        { method: "POST", body: JSON.stringify(payload) });
       if (result.account.role !== role) throw new Error("Use the portal for your account role.");
       onSession(result.token);
     });
@@ -205,7 +215,21 @@ export function AccountPortal({ role, register = false, login = false }: { role:
   const [token, setToken] = useState(() => sessionStorage.getItem(storageKey) ?? "");
   const paths = accountPaths[role];
   const query = params.toString() ? `?${params.toString()}` : "";
-  const session = useResource<{ role: string }>(!register && !login && token ? "/auth/me" : null, token);
+  const [profileVersion, setProfileVersion] = useState(0);
+  const [deskVersion, setDeskVersion] = useState(0);
+  const deskActive = !register && !login && !!token;
+  useEffect(() => {
+    if (!deskActive) return;
+    const refresh = () => setDeskVersion((value) => value + 1);
+    const interval = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [deskActive]);
+  const session = useResource<{ role: string; fullName: string; email: string; timeZone: string }>(
+    !register && !login && token ? "/auth/me" : null, token, profileVersion);
   const title = `${paths.label} Desk`;
   useSEO({ title: register ? `${paths.label} registration` : login ? `${paths.label} login` : title, noindex: true });
   const signOut = () => { sessionStorage.removeItem(storageKey); setToken(""); };
@@ -248,18 +272,152 @@ export function AccountPortal({ role, register = false, login = false }: { role:
     return <Navigate replace to={paths.login + query} />;
   }
   return <Page title={title}>
-    <button className="text-emerald-300 underline" onClick={signOut}>Sign out</button>
+    <nav aria-label="Desk sections" className="flex flex-wrap items-center gap-4 rounded-xl border border-neutral-700 p-3 text-sm">
+      <a href="#desk-overview" className="text-emerald-300">Overview</a>
+      <a href="#desk-lessons" className="text-emerald-300">Lessons</a>
+      <a href="#desk-profile" className="text-emerald-300">My profile</a>
+      <a href="#desk-notifications" className="text-emerald-300">Notifications</a>
+      <button className="ml-auto text-emerald-300 underline" onClick={signOut}>Sign out</button>
+    </nav>
     <ErrorText value={session?.error} />
     {!session && <p role="status">Checking session…</p>}
-    {session?.data && (role === "TUTOR" ? <TutorWorkspace token={token} /> : <GuardianWorkspace token={token} role={role} preferredTutor={params.get("tutor") ?? ""} />)}
+    {session?.data && <>
+      <p className="text-neutral-300">Welcome, {session.data.fullName}</p>
+      {role === "TUTOR" ? <TutorWorkspace token={token} profileVersion={profileVersion} deskVersion={deskVersion}
+        timeZone={session.data.timeZone} refreshAccount={() => setProfileVersion((value) => value + 1)} />
+        : <GuardianWorkspace token={token} role={role} preferredTutor={params.get("tutor") ?? ""}
+          timeZone={session.data.timeZone} deskVersion={deskVersion} />}
+      <DeskProfile token={token} role={role} profile={session.data} refresh={() => setProfileVersion((value) => value + 1)} />
+      <DeskNotifications token={token} timeZone={session.data.timeZone} deskVersion={deskVersion} />
+    </>}
   </Page>;
 }
 
-function LessonDetails({ booking }: { booking: Booking }) {
+export function VerifyEmail() {
+  const { hash } = useLocation();
+  const token = hash.slice(1);
+  const action = useAction();
+  const [verified, setVerified] = useState(false);
+  useSEO({ title: "Verify your email", noindex: true });
+  return <Page title="Verify your email">
+    <div className={panel}>
+      {verified ? <p role="status">Email verified. You can now sign in.</p> : token ?
+        <button className={button} disabled={action.busy} onClick={() => {
+          void action.run(async () => {
+            await request("/auth/verify-email", { method: "POST", body: JSON.stringify({ token }) });
+            setVerified(true);
+          });
+        }}>Confirm email address</button> : <p>Open the verification link sent to your email.</p>}
+      <ErrorText value={action.error} />
+      <div className="flex flex-wrap gap-4 text-emerald-300">
+        <Link to="/login/student">Student login</Link><Link to="/login/tutor">Teacher login</Link><Link to="/login/guardian">Guardian login</Link>
+      </div>
+    </div>
+  </Page>;
+}
+
+function DeskProfile({ token, role, profile, refresh }: {
+  token: string; role: Role; profile: { fullName: string; email: string; timeZone: string }; refresh: () => void;
+}) {
+  const action = useAction();
+  const [saved, setSaved] = useState(false);
+  return <form id="desk-profile" className={`${panel} scroll-mt-24`} onSubmit={(event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    setSaved(false);
+    void action.run(async () => {
+      await accountRequest("/auth/me", token, "PATCH", {
+        fullName: data.get("fullName"),
+        ...(role === "TUTOR" ? {} : { timeZone: data.get("timeZone") }),
+      });
+      setSaved(true);
+      refresh();
+    });
+  }}>
+    <h2 className="text-xl font-semibold">My profile</h2>
+    <p className="break-words text-neutral-400">{profile.email} · Verified email</p>
+    <label className="block">Full name<input className={input} name="fullName" required minLength={2} maxLength={120} defaultValue={profile.fullName} /></label>
+    {role !== "TUTOR" && <label className="block">IANA time zone<input className={input} name="timeZone" required defaultValue={profile.timeZone} /></label>}
+    {role === "TUTOR" && <p className="text-sm text-neutral-400">Your teaching profile returns to admin review if you change your public name.</p>}
+    <button className={button} disabled={action.busy}>Save profile</button>
+    <ErrorText value={action.error} />
+    {saved && <p role="status">Profile saved.</p>}
+  </form>;
+}
+
+function DeskNotifications({ token, timeZone, deskVersion }: { token: string; timeZone: string; deskVersion: number }) {
+  const [version, setVersion] = useState(0);
+  const action = useAction();
+  const alerts = useResource<Array<{ id: string; title: string; message: string; visibleAt: string; readAt: string | null }>>("/notifications", token, version + deskVersion);
+  const unread = alerts?.data?.filter((alert) => !alert.readAt).length ?? 0;
+  return <section id="desk-notifications" className={`${panel} scroll-mt-24`}>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h2 className="text-xl font-semibold">Notifications {unread ? `· ${unread} unread` : ""}</h2>
+      {unread > 0 && <button className="text-emerald-300 underline" disabled={action.busy} onClick={() => {
+        void action.run(async () => {
+          await accountRequest("/notifications/read", token, "PATCH");
+          setVersion((value) => value + 1);
+        });
+      }}>Mark all as read</button>}
+    </div>
+    <ErrorText value={alerts?.error ?? action.error} />
+    {alerts?.data?.length === 0 && <p>No class notifications yet.</p>}
+    <ul className="space-y-3">
+      {alerts?.data?.map((alert) => <li className={`rounded-lg border p-3 ${alert.readAt ? "border-neutral-800" : "border-emerald-500/40"}`} key={alert.id}>
+        <p className="font-semibold">{alert.title}</p>
+        <p>{alert.message}</p>
+        <time className="text-sm text-neutral-400" dateTime={alert.visibleAt}>{localTime(alert.visibleAt, timeZone)}</time>
+      </li>)}
+    </ul>
+  </section>;
+}
+
+function upcomingBooking(booking: Booking, now: number) {
+  return ["BOOKED", "RESCHEDULED"].includes(booking.status) &&
+    Date.parse(booking.scheduledAtUtc) + booking.durationMinutes * 60_000 > now;
+}
+
+function orderedLessons(bookings: Booking[] = []) {
+  const now = Date.now();
+  const upcoming = bookings.filter((booking) => upcomingBooking(booking, now));
+  const history = bookings.filter((booking) => !upcomingBooking(booking, now)).reverse();
+  return [...upcoming, ...history];
+}
+
+function DeskOverview({ bookings, role, token, timeZone }: { bookings?: Booking[]; role: Role; token: string; timeZone: string }) {
+  const now = Date.now();
+  const upcoming = bookings?.filter((booking) => upcomingBooking(booking, now)) ?? [];
+  const people = new Map<string, string>();
+  for (const booking of bookings ?? []) {
+    if (booking.status === "CANCELLED") continue;
+    if (role === "TUTOR") people.set(booking.student.id, booking.student.fullName);
+    else if (booking.tutor) people.set(booking.tutorId, booking.tutor.account.fullName);
+  }
+  return <section id="desk-overview" className="grid scroll-mt-24 gap-4 md:grid-cols-2">
+    <div className={panel}>
+      <h2 className="text-xl font-semibold">Upcoming classes</h2>
+      {!bookings ? <p>Loading classes…</p> : upcoming.length ? <>
+        <p>{upcoming.length} scheduled</p>
+        <LessonDetails booking={upcoming[0]} timeZone={timeZone} />
+        <LessonJoin booking={upcoming[0]} token={token} role={role} timeZone={timeZone} />
+        <a className="text-emerald-300 underline" href="#desk-lessons">View lessons</a>
+      </> : <p>No upcoming classes.</p>}
+    </div>
+    <div className={panel}>
+      <h2 className="text-xl font-semibold">{role === "TUTOR" ? "My learners" : "My teachers"}</h2>
+      {!bookings ? <p>Loading…</p> : people.size === 0 ? <p>Contacts appear here after a lesson is booked.</p> :
+        <ul className="space-y-2">{Array.from(people, ([id, name]) => <li key={id}>
+          {role === "TUTOR" ? name : <Link className="text-emerald-300 underline" to={`/tutors/${id}`}>{name}</Link>}
+        </li>)}</ul>}
+    </div>
+  </section>;
+}
+
+function LessonDetails({ booking, timeZone }: { booking: Booking; timeZone?: string }) {
   const progress = booking.progressEntry;
   return <div className="space-y-2">
     <p>{booking.student.fullName}{booking.tutor ? ` with ${booking.tutor.account.fullName}` : ""}
-      {" · "}{localTime(booking.scheduledAtUtc)} · {booking.durationMinutes} min · {booking.status.replaceAll("_", " ")}</p>
+      {" · "}{localTime(booking.scheduledAtUtc, timeZone)}{timeZone ? ` (${timeZone})` : ""} · {booking.durationMinutes} min · {booking.status.replaceAll("_", " ")}</p>
     {booking.lessonSession?.tutorNotes && <p className="whitespace-pre-wrap">Tutor notes: {booking.lessonSession.tutorNotes}</p>}
     {progress && <p>
       Progress: {progress.currentBook} · {progress.currentChapter}
@@ -270,26 +428,47 @@ function LessonDetails({ booking }: { booking: Booking }) {
   </div>;
 }
 
-function LessonActions({ booking, token, role, refresh }: {
-  booking: Booking; token: string; role: Role; refresh?: () => void;
-}) {
+function LessonJoin({ booking, token, role, timeZone }: { booking: Booking; token: string; role: Role; timeZone: string }) {
   const join = useAction();
-  const saveLink = useAction();
-  const outcome = useAction();
-  const [status, setStatus] = useState("COMPLETED");
-  const [message, setMessage] = useState("");
-  const path = `/${role === "TUTOR" ? "tutor" : "guardian"}/bookings/${booking.id}`;
+  const [, refreshClock] = useState(0);
+  const start = Date.parse(booking.scheduledAtUtc);
+  const opens = start - 10 * 60_000;
+  const closes = start + (booking.durationMinutes + 15) * 60_000;
+  const now = Date.now();
+  const boundary = now < opens ? opens : now < closes ? closes : null;
+  useEffect(() => {
+    if (boundary === null) return;
+    const timer = window.setTimeout(() => refreshClock((value) => value + 1), Math.min(2_147_483_647, Math.max(1, boundary - Date.now())));
+    return () => window.clearTimeout(timer);
+  }, [boundary]);
   if (!["BOOKED", "RESCHEDULED"].includes(booking.status)) return null;
-  return <div className="space-y-3">
-    <button className={button} type="button" disabled={join.busy} onClick={() => {
+  const label = now < opens ? `Join opens ${localTime(new Date(opens).toISOString(), timeZone)} (${timeZone}).`
+    : now >= closes ? "The meeting window has closed." : "The meeting window is open.";
+  return <div className="space-y-2">
+    <button className={button} type="button" disabled={join.busy || now < opens || now >= closes} onClick={() => {
       void join.run(async () => {
-        const { url } = await accountRequest<{ url: string }>(`${path}/meeting`, token);
+        const { url } = await accountRequest<{ url: string }>(
+          `/${role === "TUTOR" ? "tutor" : "guardian"}/bookings/${booking.id}/meeting`, token);
         if (new URL(url).protocol !== "https:") throw new Error("Invalid meeting link.");
         window.location.assign(url);
       });
     }}>Join lesson</button>
-    <p className="text-sm text-neutral-400">Meeting access opens 10 minutes before class.</p>
+    <p className="text-sm text-neutral-400">{label}</p>
     <ErrorText value={join.error} />
+  </div>;
+}
+
+function LessonActions({ booking, token, role, timeZone, refresh }: {
+  booking: Booking; token: string; role: Role; timeZone: string; refresh?: () => void;
+}) {
+  const saveLink = useAction();
+  const outcome = useAction();
+  const [status, setStatus] = useState("COMPLETED");
+  const [message, setMessage] = useState("");
+  const path = `/tutor/bookings/${booking.id}`;
+  if (!["BOOKED", "RESCHEDULED"].includes(booking.status)) return null;
+  return <div className="space-y-3">
+    <LessonJoin booking={booking} token={token} role={role} timeZone={timeZone} />
     {role === "TUTOR" && <>
       <details className="rounded border border-neutral-700 p-3">
         <summary className="cursor-pointer">Set meeting link</summary>
@@ -350,25 +529,33 @@ function LessonActions({ booking, token, role, refresh }: {
   </div>;
 }
 
-function TutorWorkspace({ token }: { token: string }) {
+function TutorWorkspace({ token, profileVersion, deskVersion, timeZone, refreshAccount }: {
+  token: string; profileVersion: number; deskVersion: number; timeZone: string; refreshAccount: () => void;
+}) {
   const [version, setVersion] = useState(0);
-  const profile = useResource<Profile>("/tutor/profile", token, version);
-  const bookings = useResource<Booking[]>("/tutor/bookings", token, version);
+  const profile = useResource<Profile>("/tutor/profile", token, version + profileVersion);
+  const bookings = useResource<Booking[]>("/tutor/bookings", token, version + deskVersion);
   return <>
+    <DeskOverview bookings={bookings?.data} role="TUTOR" token={token} timeZone={timeZone} />
     <ErrorText value={profile?.error ?? bookings?.error} />
     {!profile && <p role="status">Loading profile…</p>}
-    {profile?.data && createElement(TutorEditor, {
-      key: profile.data.updatedAt, profile: profile.data, token,
-      refresh: () => setVersion((value) => value + 1),
-    })}
-    <section className={panel}>
+    <section id="desk-lessons" className={`${panel} scroll-mt-24`}>
       <h2 className="text-xl font-semibold">Your lessons</h2>
       {bookings?.data?.length === 0 && <p>No lessons booked yet.</p>}
-      {bookings?.data?.map((booking) => <article className={panel} key={booking.id}>
-        <LessonDetails booking={booking} />
-        <LessonActions booking={booking} token={token} role="TUTOR" refresh={() => setVersion((value) => value + 1)} />
+      {orderedLessons(bookings?.data).map((booking) => <article className={panel} key={booking.id}>
+        <LessonDetails booking={booking} timeZone={timeZone} />
+        <LessonActions booking={booking} token={token} role="TUTOR" timeZone={timeZone} refresh={() => setVersion((value) => value + 1)} />
       </article>)}
     </section>
+    {profile?.data && <details className={panel}>
+      <summary className="cursor-pointer text-lg font-semibold">Teaching profile and weekly availability · {profile.data.approvalStatus}</summary>
+      <div className="space-y-4">
+        {createElement(TutorEditor, {
+          key: profile.data.updatedAt, profile: profile.data, token,
+          refresh: refreshAccount,
+        })}
+      </div>
+    </details>}
   </>;
 }
 
@@ -424,22 +611,25 @@ function TutorEditor({ profile, token, refresh }: { profile: Profile; token: str
   </>;
 }
 
-function GuardianWorkspace({ token, role, preferredTutor }: { token: string; role: "GUARDIAN" | "STUDENT"; preferredTutor: string }) {
+function GuardianWorkspace({ token, role, preferredTutor, deskVersion, timeZone }: {
+  token: string; role: "GUARDIAN" | "STUDENT"; preferredTutor: string; deskVersion: number; timeZone: string;
+}) {
   const [version, setVersion] = useState(0);
   const [tutorId, setTutorId] = useState(preferredTutor);
   const [reschedule, setReschedule] = useState<Booking>();
   const [attempt, setAttempt] = useState<{ key: string; id: string }>();
   const students = useResource<Student[]>("/guardian/students", token, version);
   const tutors = useResource<Tutor[]>("/tutors", undefined, version);
-  const bookings = useResource<Booking[]>("/guardian/bookings", token, version);
+  const bookings = useResource<Booking[]>("/guardian/bookings", token, version + deskVersion);
   const selectedTutor = reschedule?.tutorId ?? tutorId;
   const slotsPath = reschedule ? `/guardian/bookings/${reschedule.id}/slots` : tutorId ? `/tutors/${tutorId}/slots` : null;
-  const slots = useResource<string[]>(slotsPath, reschedule ? token : undefined, version);
+  const slots = useResource<string[]>(slotsPath, reschedule ? token : undefined, version + deskVersion);
   const learnerAction = useAction();
   const bookingAction = useAction();
   const refresh = () => setVersion((value) => value + 1);
 
   return <>
+    <DeskOverview bookings={bookings?.data} role={role} token={token} timeZone={timeZone} />
     {role === "GUARDIAN" && <form className={panel} onSubmit={(event) => {
       event.preventDefault();
       const form = event.currentTarget;
@@ -488,16 +678,20 @@ function GuardianWorkspace({ token, role, preferredTutor }: { token: string; rol
             <option value="">Choose a learner</option>
             {students?.data?.map((student) => <option key={student.id} value={student.id}>{student.fullName}</option>)}
           </select></label>}
-          <label className="block">Tutor<select className={input} value={tutorId} onChange={(event) => setTutorId(event.target.value)} required>
+          <div>
+            <label className="block" htmlFor="booking-tutor">Tutor</label>
+            <select id="booking-tutor" className={input} value={tutorId} onChange={(event) => setTutorId(event.target.value)} required>
             <option value="">Choose a tutor</option>
             {tutors?.data?.map((tutor) => <option key={tutor.accountId} value={tutor.accountId}>{tutor.account.fullName}</option>)}
-          </select></label>
+            </select>
+          </div>
+          {tutors?.data?.length === 0 && <p className="text-sm text-neutral-400">No approved tutors are available to book yet.</p>}
         </>
       )}
-      <label className="block">Available times ({Intl.DateTimeFormat().resolvedOptions().timeZone})
+      <label className="block">Available times ({timeZone})
         <select key={selectedTutor} className={input} name="scheduledAtUtc" defaultValue="" required>
           <option value="">{slots?.data?.length ? "Choose a time" : "No times shown"}</option>
-          {slots?.data?.map((slot) => <option key={slot} value={slot}>{localTime(slot)}</option>)}
+          {slots?.data?.map((slot) => <option key={slot} value={slot}>{localTime(slot, timeZone)}</option>)}
         </select>
       </label>
       <ErrorText value={bookingAction.error ?? slots?.error ?? tutors?.error ?? students?.error} />
@@ -506,14 +700,14 @@ function GuardianWorkspace({ token, role, preferredTutor }: { token: string; rol
         {reschedule && <button type="button" className="text-emerald-300 underline" onClick={() => setReschedule(undefined)}>Keep original time</button>}
       </div>
     </form>
-    <section className={panel}>
+    <section id="desk-lessons" className={`${panel} scroll-mt-24`}>
       <h2 className="text-xl font-semibold">Your lessons</h2>
       <ErrorText value={bookings?.error} />
       {bookings?.data?.length === 0 && <p>No lessons booked yet.</p>}
-      {bookings?.data?.map((booking) => (
+      {orderedLessons(bookings?.data).map((booking) => (
         <div className="space-y-2 border-t border-neutral-700 pt-3" key={booking.id}>
-          <LessonDetails booking={booking} />
-          <LessonActions booking={booking} token={token} role={role} />
+          <LessonDetails booking={booking} timeZone={timeZone} />
+          <LessonActions booking={booking} token={token} role={role} timeZone={timeZone} />
           {["BOOKED", "RESCHEDULED"].includes(booking.status) && new Date(booking.scheduledAtUtc).getTime() > Date.now() && (
             <div className="flex gap-4">
               <button className="text-emerald-300 underline" disabled={bookingAction.busy} onClick={() => setReschedule(booking)}>Reschedule</button>
@@ -531,6 +725,113 @@ function GuardianWorkspace({ token, role, preferredTutor }: { token: string; rol
       ))}
     </section>
   </>;
+}
+
+type ManagedAccount = {
+  membershipId: string;
+  role: Role;
+  status: "ACTIVE" | "SUSPENDED" | "REVOKED";
+  account: {
+    id: string; fullName: string; email: string; timeZone: string; managedLearner: boolean;
+    tutorProfile: Pick<Profile, "approvalStatus" | "specialties" | "languages" | "experienceYears" | "hourlyRate" | "bio" | "qualifications"> | null;
+    studentLinks: Array<{ guardian: { id: string; fullName: string } }>;
+  };
+};
+
+export function AccountManagement({ onLogout }: { onLogout: () => void }) {
+  const token = getStoredAdminToken();
+  const [version, setVersion] = useState(0);
+  const [query, setQuery] = useState("");
+  const [role, setRole] = useState("");
+  const [selected, setSelected] = useState("");
+  const [notice, setNotice] = useState("");
+  const action = useAction();
+  const result = useResource<ManagedAccount[]>(token ? "/admin/accounts" : null, token ?? undefined, version);
+  useSEO({ title: "Academy account management", noindex: true });
+  const accounts = result?.data?.filter((entry) => entry.role in accountPaths) ?? [];
+  const visible = accounts.filter((entry) =>
+    (!role || entry.role === role) &&
+    [entry.account.fullName, entry.account.email, entry.account.id].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
+  const refresh = () => setVersion((value) => value + 1);
+  return <Page title="Academy Administration">
+    <div className="flex flex-wrap gap-4">
+      <Link className="text-emerald-300 underline" to="/admin/tutors">Tutor applications</Link>
+      <Link className="text-emerald-300 underline" to="/admin/operations">Lesson recovery and audit</Link>
+      <Link className="text-neutral-300 underline" to="/admin/content">Prototype content tools</Link>
+      <button className="text-red-300 underline" onClick={onLogout}>Sign out</button>
+    </div>
+    <div className="grid gap-3 sm:grid-cols-3">
+      {(["TUTOR", "STUDENT", "GUARDIAN"] as const).map((key) => <button type="button" key={key}
+        className={`${panel} text-left`} onClick={() => setRole(role === key ? "" : key)} aria-pressed={role === key}>
+        <span className="block text-xs text-neutral-400">Active {accountPaths[key].label.toLowerCase()} accounts</span>
+        <span className="block text-2xl font-bold">{result?.data ? accounts.filter((entry) => entry.role === key && entry.status === "ACTIVE").length : "—"}</span>
+      </button>)}
+    </div>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <label>Search by name, email, or account ID<input type="search" className={input} value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+      <label>Account role<select className={input} value={role} onChange={(event) => setRole(event.target.value)}>
+        <option value="">All roles</option>
+        <option value="TUTOR">Teachers</option><option value="STUDENT">Students</option><option value="GUARDIAN">Guardians</option>
+      </select></label>
+    </div>
+    <ErrorText value={action.error ?? result?.error} />
+    <p role="status" className="text-emerald-300">{notice}</p>
+    {!result && token && <p role="status">Loading accounts…</p>}
+    {result?.data && !visible.length && <p>No matching accounts.</p>}
+    {visible.map(({ account, membershipId, role: kind, status }) => (
+      <article key={membershipId} className={panel}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 break-words">
+            <h2 className="text-xl font-semibold">{account.fullName}</h2>
+            <p>{accountPaths[kind].label} · {status}{account.tutorProfile ? ` · Profile ${account.tutorProfile.approvalStatus}` : ""}</p>
+            <p>{account.managedLearner ? "Guardian-managed learner" : account.email}</p>
+            <p className="text-sm text-neutral-400">Account ID: <code>{account.id}</code></p>
+            {account.studentLinks.length > 0 && <p className="text-sm text-neutral-400">
+              Guardian: {account.studentLinks.map(({ guardian }) => guardian.fullName).join(", ")}
+            </p>}
+          </div>
+          <button className="text-emerald-300 underline" type="button" onClick={() => setSelected(selected === membershipId ? "" : membershipId)}>
+            {selected === membershipId ? "Close profile" : "View and edit profile"}
+          </button>
+        </div>
+        {selected === membershipId && <form className="space-y-3" onSubmit={(event) => {
+          event.preventDefault();
+          const data = new FormData(event.currentTarget);
+          if (!token) return;
+          setNotice("");
+          void action.run(async () => {
+            await accountRequest(`/admin/accounts/${account.id}/profile`, token, "PATCH", {
+              fullName: data.get("fullName"), timeZone: kind === "TUTOR" ? account.timeZone : data.get("timeZone"),
+              ...(account.tutorProfile ? { tutorProfile: profileData(data) } : {}),
+            });
+            setNotice("Profile saved.");
+            refresh();
+          });
+        }}>
+          <label className="block">Full name<input name="fullName" className={input} required minLength={2} maxLength={120} defaultValue={account.fullName} /></label>
+          {kind !== "TUTOR" && <label className="block">IANA time zone<input name="timeZone" className={input} required defaultValue={account.timeZone} /></label>}
+          {account.tutorProfile && <ProfileFields profile={account.tutorProfile} />}
+          <button className={button} disabled={action.busy}>Save profile</button>
+        </form>}
+        <div className="flex flex-wrap gap-4">
+          {([["ACTIVE", "Restore access"], ["SUSPENDED", "Suspend"], ["REVOKED", "Remove from academy"]] as const)
+            .filter(([next]) => next !== status && !(status === "REVOKED" && next === "SUSPENDED"))
+            .map(([next, label]) => <button type="button" key={next} disabled={action.busy}
+              className={next === "ACTIVE" ? "text-emerald-300 underline" : "text-red-300 underline"}
+              onClick={() => {
+                if (!token || (next !== "ACTIVE" && !window.confirm(`${label} for ${account.fullName}? Booking and audit history will be kept.`))) return;
+                setNotice("");
+                void action.run(async () => {
+                  try {
+                    await accountRequest(`/admin/memberships/${membershipId}`, token, "PATCH", { status: next });
+                    setNotice(`${account.fullName}: ${next.toLowerCase()}.`);
+                  } finally { refresh(); }
+                });
+              }}>{label}</button>)}
+        </div>
+      </article>
+    ))}
+  </Page>;
 }
 
 export function AcademyOperations() {

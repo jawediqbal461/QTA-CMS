@@ -18,7 +18,7 @@ import { clearStoredAdminToken, getStoredAdminToken } from "./lib/api";
 // Everything else is only needed after explicit navigation, so it's
 // code-split into its own chunk to keep the initial bundle smaller.
 import PublicHome from "./components/PublicHome";
-import { AcademyOperations, AccountPortal, PublicTutors, TutorReview } from "./components/Marketplace";
+import { AcademyOperations, AccountManagement, AccountPortal, PublicTutors, TutorReview, VerifyEmail } from "./components/Marketplace";
 const Classroom = lazy(() => import("./components/Classroom"));
 const AdminCMS = lazy(() => import("./components/AdminCMS"));
 const AdminLogin = lazy(() => import("./components/AdminLogin"));
@@ -277,7 +277,7 @@ export default function App() {
 
       {/* GLOBAL PERSISTENT ANNOUNCEMENT BAR */}
       <AnimatePresence>
-        {isAnnouncementVisible && (
+        {isAnnouncementVisible && isAdminAuthenticated && isPath("/admin/content") && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
@@ -291,7 +291,7 @@ export default function App() {
               </span>
               <Sparkles size={13} className="text-amber-400 animate-pulse shrink-0" />
               <span>
-                <strong>Noble Quran Tutors Academy</strong>: Premium CMS Engine and Scholars Portal configured for live schedule synchronization.
+                Prototype content tools use demo data stored in this browser.
               </span>
             </div>
             <div className="flex items-center space-x-3 ml-auto sm:ml-0">
@@ -299,7 +299,7 @@ export default function App() {
                 onClick={handleResetDemoData}
                 className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 transition-all font-bold px-3 py-1 rounded-lg text-[10px] tracking-wider uppercase cursor-pointer shadow-md hover:shadow-emerald-500/10 active:scale-95"
               >
-                Reset Database Seeds
+                Reset local demo data
               </button>
               <button
                 onClick={() => setIsAnnouncementVisible(false)}
@@ -800,7 +800,7 @@ export default function App() {
                 }}
                 onNavigateToAdmin={(subTab) => {
                   setAdminInitialSubTab(subTab);
-                  navigate("/admin");
+                  navigate("/admin/content");
                 }}
               />
             } />
@@ -826,6 +826,7 @@ export default function App() {
             <Route path="/guardian" element={React.createElement(AccountPortal, { key: "guardian", role: "GUARDIAN" })} />
             <Route path="/tutor" element={React.createElement(AccountPortal, { key: "tutor", role: "TUTOR" })} />
             <Route path="/admin/tutors" element={<TutorReview />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/admin/operations" element={<AcademyOperations />} />
 
             {/* Live Classroom Simulator */}
@@ -864,12 +865,17 @@ export default function App() {
             } />
 
             {/* Admin CMS and database layout */}
-            <Route path="/admin" element={
+            <Route path="/admin" element={isAdminAuthenticated ? (
+              <AccountManagement onLogout={() => { clearStoredAdminToken(); setIsAdminAuthenticated(false); }} />
+            ) : (
+              <AdminLogin onLoginSuccess={() => setIsAdminAuthenticated(true)} onBackToHome={() => navigate("/")} />
+            )} />
+            <Route path="/admin/content" element={
               isAdminAuthenticated ? (
                 <>
                   <div className="mx-auto flex max-w-5xl flex-wrap gap-4 px-4 pt-4">
-                    <button className="text-emerald-300 underline" onClick={() => navigate("/admin/tutors")}>Review tutor applications</button>
-                    <button className="text-emerald-300 underline" onClick={() => navigate("/admin/operations")}>Lesson recovery and audit</button>
+                    <button className="text-emerald-300 underline" onClick={() => navigate("/admin")}>Back to live account management</button>
+                    <span className="text-amber-300">Prototype tools · browser-local data</span>
                   </div>
                   <AdminCMS
                     curriculums={curriculums}
@@ -904,7 +910,7 @@ export default function App() {
       </main>
 
       {/* FOOTER */}
-      <footer className="bg-neutral-950 border-t border-neutral-900 py-6 text-center text-xs text-neutral-500">
+      <footer className="bg-neutral-950 border-t border-neutral-900 py-6 text-center text-xs text-neutral-400">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p>© {new Date().getFullYear()} Quran Tutors Academy • Custom CMS Pilot Platform.</p>
           <div className="flex space-x-4">

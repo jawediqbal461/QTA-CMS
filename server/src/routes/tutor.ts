@@ -6,6 +6,7 @@ import { asyncHandler } from "../lib/asyncHandler.js";
 import { tutorFields } from "../lib/tutorProfile.js";
 import { activeStatuses, availabilitySchema, MINUTE } from "../lib/scheduling.js";
 import { canJoinLesson, lessonSummary, meetingWindowMessage } from "../lib/lessonAccess.js";
+import { notifyBooking } from "../lib/notifications.js";
 
 export const tutorRouter = Router();
 
@@ -67,7 +68,7 @@ tutorRouter.get("/bookings", asyncHandler(async (req, res) => {
     where: { tutorId: accountId, academyId },
     select: {
       id: true, scheduledAtUtc: true, status: true, durationMinutes: true,
-      student: { select: { fullName: true } },
+      student: { select: { id: true, fullName: true } },
       ...lessonSummary,
     },
     orderBy: { scheduledAtUtc: "asc" },
@@ -161,6 +162,9 @@ tutorRouter.post("/bookings/:id/outcome", asyncHandler(async (req, res) => {
         data: { bookingId: where.id, studentId: booking.studentId, recordedById: accountId, ...outcome.progress },
       });
     }
+    await notifyBooking(tx, {
+      id: where.id, academyId, tutorId: accountId, studentId: booking.studentId, scheduledAtUtc: expectedStart,
+    }, outcome.status === "COMPLETED" ? "completed" : "no-show");
     return "saved";
   });
   if (result === "missing") return res.status(404).json({ error: "Lesson not found." });

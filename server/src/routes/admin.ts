@@ -2,9 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { recordAudit } from "../lib/audit.js";
 import { asyncHandler } from "../lib/asyncHandler.js";
-import { activeStatuses, MINUTE } from "../lib/scheduling.js";
+import { activeStatuses, MINUTE, timeZoneSchema } from "../lib/scheduling.js";
+import { tutorFields } from "../lib/tutorProfile.js";
+import { notifyBooking } from "../lib/notifications.js";
 
 export const adminRouter = Router();
 
@@ -57,7 +58,7 @@ adminRouter.patch("/operations/bookings/:id", asyncHandler(async (req, res) => {
   const where = { id: req.params.id, academyId };
   const result = await prisma.$transaction(async (tx) => {
     const booking = await tx.booking.findFirst({
-      where, select: { status: true, scheduledAtUtc: true, durationMinutes: true },
+      where, select: { id: true, academyId: true, tutorId: true, studentId: true, status: true, scheduledAtUtc: true, durationMinutes: true },
     });
     if (!booking) return "missing";
     const start = new Date(expectedStart);
@@ -67,6 +68,7 @@ adminRouter.patch("/operations/bookings/:id", asyncHandler(async (req, res) => {
       data: { status, meetingUrl: null },
     });
     if (!updated.count) return "conflict";
+    await notifyBooking(tx, booking, status === "NO_SHOW" ? "no-show" : "cancelled");
     await tx.auditEvent.create({
       data: {
         academyId, actorId: accountId, action: "booking.recovered", targetType: "booking",
@@ -120,7 +122,12 @@ adminRouter.get("/accounts", asyncHandler(async (req, res) => {
   const memberships = await prisma.academyMembership.findMany({
     where: { academyId: req.session!.academyId },
     include: {
-      account: { select: { id: true, email: true, fullName: true, createdAt: true } },
+      account: { select: {
+        id: true, email: true, fullName: true, createdAt: true, timeZone: true,
+        tutorProfile: { select: { academyId: true, approvalStatus: true, bio: true, qualifications: true, experienceYears: true, hourlyRate: true, specialties: true, languages: true } },
+        studentLinks: { where: { guardian: { memberships: { some: { academyId: req.session!.academyId, role: "GUARDIAN" } } } },
+          select: { guardian: { select: { id: true, fullName: true } } } },
+      } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -129,9 +136,52 @@ adminRouter.get("/accounts", asyncHandler(async (req, res) => {
       membershipId: m.id,
       role: m.role,
       status: m.status,
-      account: m.account,
+      account: {
+        ...m.account,
+        managedLearner: m.role === "STUDENT" && m.account.email.endsWith("@learner.invalid"),
+        tutorProfile: m.account.tutorProfile?.academyId === m.academyId ? m.account.tutorProfile : null,
+      },
     })),
   );
+}));
+
+const profileSchema = z.object({
+  fullName: z.string().trim().min(2).max(120),
+  timeZone: timeZoneSchema,
+  tutorProfile: tutorFields.optional(),
+});
+
+adminRouter.patch("/accounts/:id/profile", asyncHandler(async (req, res) => {
+  const parsed = profileSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Check the name, timezone, and tutor profile fields." });
+  const { academyId, accountId } = req.session!;
+  const targetId = req.params.id;
+  const { tutorProfile, ...details } = parsed.data;
+  const outcome = await prisma.$transaction(async (tx) => {
+    const membership = await tx.academyMembership.findUnique({
+      where: { academyId_accountId: { academyId, accountId: targetId } },
+      select: { role: true },
+    });
+    if (!membership || !["TUTOR", "STUDENT", "GUARDIAN"].includes(membership.role)) return "missing";
+    if (tutorProfile && membership.role !== "TUTOR") return "invalid";
+    const account = await tx.account.updateMany({
+      where: { id: targetId, memberships: { every: { academyId } } },
+      data: membership.role === "TUTOR" ? { fullName: details.fullName } : details,
+    });
+    if (!account.count) return "shared";
+    if (tutorProfile) {
+      const profile = await tx.tutorProfile.updateMany({ where: { accountId: targetId, academyId }, data: tutorProfile });
+      if (!profile.count) throw new Error("Tutor account is missing its profile.");
+    }
+    await tx.auditEvent.create({
+      data: { actorId: accountId, academyId, action: "account.profile_updated", targetType: "account", targetId },
+    });
+    return "saved";
+  });
+  if (outcome === "missing") return res.status(404).json({ error: "Manageable account not found." });
+  if (outcome === "invalid") return res.status(400).json({ error: "Only tutors have teaching profiles." });
+  if (outcome === "shared") return res.status(409).json({ error: "This account is shared across academies." });
+  res.json({ saved: true });
 }));
 
 const updateStatusSchema = z.object({
@@ -147,29 +197,26 @@ adminRouter.patch("/memberships/:membershipId", asyncHandler(async (req, res) =>
     return res.status(400).json({ error: parsed.error.flatten() });
   }
 
-  const membership = await prisma.academyMembership.findUnique({
-    where: { id: req.params.membershipId },
+  const { academyId, accountId, role } = req.session!;
+  const where = { id: req.params.membershipId, academyId };
+  const status = parsed.data.status;
+  const result = await prisma.$transaction(async (tx) => {
+    const membership = await tx.academyMembership.findFirst({ where });
+    if (!membership) return "missing";
+    if ((membership.accountId === accountId && status !== "ACTIVE") ||
+        membership.role === "PLATFORM_ADMIN" ||
+        (membership.role === "ACADEMY_ADMIN" && role !== "PLATFORM_ADMIN")) return "protected";
+    if (membership.status === status) return "saved";
+    const updated = await tx.academyMembership.updateMany({ where: { ...where, status: membership.status }, data: { status } });
+    if (!updated.count) return "conflict";
+    await tx.auditEvent.create({
+      data: { actorId: accountId, academyId, action: "membership.status_changed",
+        targetType: "academy_membership", targetId: membership.id, metadata: { from: membership.status, to: status } },
+    });
+    return "saved";
   });
-  if (!membership || membership.academyId !== req.session!.academyId) {
-    return res.status(404).json({ error: "Membership not found" });
-  }
-  if (membership.accountId === req.session!.accountId && parsed.data.status !== "ACTIVE") {
-    return res.status(400).json({ error: "You cannot revoke your own access" });
-  }
-
-  const updated = await prisma.academyMembership.update({
-    where: { id: membership.id },
-    data: { status: parsed.data.status },
-  });
-
-  await recordAudit({
-    actorId: req.session!.accountId,
-    academyId: req.session!.academyId,
-    action: "membership.status_changed",
-    targetType: "academy_membership",
-    targetId: membership.id,
-    metadata: { from: membership.status, to: parsed.data.status },
-  });
-
-  res.json({ membershipId: updated.id, status: updated.status });
+  if (result === "missing") return res.status(404).json({ error: "Membership not found" });
+  if (result === "protected") return res.status(403).json({ error: "This administrator membership is protected." });
+  if (result === "conflict") return res.status(409).json({ error: "Membership changed. Refresh before trying again." });
+  res.json({ membershipId: where.id, status });
 }));

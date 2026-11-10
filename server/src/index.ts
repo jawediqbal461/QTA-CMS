@@ -7,6 +7,8 @@ import { adminRouter } from "./routes/admin.js";
 import { tutorRouter } from "./routes/tutor.js";
 import { guardianRouter } from "./routes/guardian.js";
 import { directoryRouter } from "./routes/directory.js";
+import { notificationsRouter } from "./routes/notifications.js";
+import { mailConfig, startNotificationWorker } from "./lib/notifications.js";
 import { prisma } from "./lib/prisma.js";
 import { asyncHandler } from "./lib/asyncHandler.js";
 
@@ -38,12 +40,17 @@ const healthHandler = asyncHandler(async (_req, res) => {
 });
 app.get("/health", healthHandler);
 app.get("/api/health", healthHandler);
+app.get("/api/health/email", (_req, res) => {
+  const configured = !!mailConfig();
+  res.status(configured ? 200 : 503).json({ status: configured ? "configured" : "unavailable" });
+});
 
 app.use("/api/auth", authRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/tutor", tutorRouter);
 app.use("/api/guardian", guardianRouter);
 app.use("/api/tutors", directoryRouter);
+app.use("/api/notifications", notificationsRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
@@ -62,3 +69,4 @@ const port = Number(process.env.PORT) || 4000;
 app.listen(port, "127.0.0.1", () => {
   console.log(`QTA CMS API listening on 127.0.0.1:${port}`);
 });
+startNotificationWorker();

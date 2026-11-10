@@ -66,6 +66,7 @@ model Academy {
 model Account {
   id           String   @id @default(uuid())
   email        String   @unique
+  emailVerifiedAt DateTime?
   passwordHash String
   fullName     String
   timeZone     String   @default("UTC")
@@ -80,8 +81,32 @@ model Account {
   progressRecorded  ProgressEntry[]    @relation("ProgressRecordedBy")
   progressOf        ProgressEntry[]    @relation("ProgressOfStudent")
   auditEvents    AuditEvent[]
+  notifications  PortalNotification[]
 
   @@map("accounts")
+}
+
+model PortalNotification {
+  id           String   @id @default(uuid())
+  accountId    String
+  account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  academyId    String
+  bookingId    String?
+  kind         String
+  title        String
+  message      String
+  visibleAt    DateTime @default(now())
+  createdAt    DateTime @default(now())
+  readAt       DateTime?
+  emailedAt    DateTime?
+  nextAttempt  DateTime @default(now())
+  attempts     Int      @default(0)
+  cancelledAt  DateTime?
+
+  @@index([accountId, academyId, visibleAt])
+  @@index([bookingId, kind])
+  @@index([nextAttempt])
+  @@map("portal_notifications")
 }
 
 model AcademyMembership {

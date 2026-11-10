@@ -10,7 +10,7 @@ Launch Quran Tutors Academy as a Quran-focused tutoring marketplace operated by 
 
 The reference sites offer two discovery paths: browse tutors or post a learning requirement. QTA will adopt both paths, with private in-platform responses and paid access to eligible lead contacts. The QTA plan also includes booking, lesson delivery, study resources, and progress tracking.
 
-References: [MyPrivateTutor learner help](https://www.myprivatetutor.com/help-center/learner) · [MyPrivateTutor UAE homepage](https://www.myprivatetutor.ae/) · [UAE student help](https://www.myprivatetutor.ae/help-center/student) · [UAE tutor help](https://www.myprivatetutor.ae/help-center/tutor)
+References: [MyPrivateTutor UAE homepage](https://www.myprivatetutor.ae/) · [UAE student help](https://www.myprivatetutor.ae/help-center/student) · [UAE tutor help](https://www.myprivatetutor.ae/help-center/tutor)
 
 | Surface | MVP | Paid launch and SaaS |
 |---|---|---|
@@ -134,6 +134,8 @@ The July 26 WordPress backup supplies 25 published articles. Serve the archive a
 | M03 | P0 | Product engineering: guardian and student linking, booking, rescheduling, and cancellation | M01, M02 | Slot collisions are prevented atomically. Retries are safe. Both parties see the same status and local time |
 | M04 | P0 | Product engineering: meeting access, attendance, lesson notes, and progress | M03 | Only assigned users can retrieve the meeting link. Completion saves attendance and one progress update even on retry |
 | M05 | P0 | Operations and QA: admin recovery, audit trail, backup/restore, and end-to-end pilot rehearsal | M01–M04 | Staff can resolve a missed lesson and recover a backup. Critical workflows pass on desktop and mobile |
+| M05a | P0 | Academy administration: manage teacher, student, and guardian accounts from the live dashboard | M01–M03 | Staff can search by name, email, or account ID, inspect and edit profiles, see learner–guardian links, and suspend, revoke, or restore academy access. Revocation preserves lesson history. Changes are scoped to the academy and audited. |
+| M05b | P0 | Verified accounts and student, guardian, and teacher desks | M01–M04 | Signup requires email confirmation before sign-in. Desks show profile settings, upcoming lessons, teacher or learner relationships, and portal and email class updates. Rescheduling invalidates the old reminder. |
 | M06 | P1 | Frontend and QA: accessible controls, empty/error states, public content and metadata | F03, M02 | Keyboard and screen-reader smoke checks pass on booking and lesson entry. Published pages have correct metadata |
 | M07 | P0 | Product engineering and operations: tutor request and staff-assisted matching | M01, M02 | A guardian can submit a request, review a tutor match, and book a trial. The tutor sees only the approved brief and relevant assignment. |
 | M08 | P0 | Content and frontend: public resource catalog and Arabic RTL reader | F03 | Approved resources are discoverable. Restricted files require access. Font settings persist and verified Arabic renders correctly in mixed-direction layouts. |

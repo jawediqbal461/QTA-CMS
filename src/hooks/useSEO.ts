@@ -62,6 +62,8 @@ export function useSEO(options: SEOOptions) {
   const schemaKey = options.schema ? JSON.stringify(options.schema) : "";
 
   useEffect(() => {
+    const pageUrl = new URL(window.location.href);
+    pageUrl.hash = "";
     const fullTitle = options.title.includes(SITE_NAME) ? options.title : `${options.title} | ${SITE_NAME}`;
     document.title = fullTitle;
 
@@ -71,7 +73,7 @@ export function useSEO(options: SEOOptions) {
     upsertMeta("property", "og:title", fullTitle);
     upsertMeta("property", "og:description", description);
     upsertMeta("property", "og:type", "website");
-    upsertMeta("property", "og:url", window.location.href);
+    upsertMeta("property", "og:url", pageUrl.href);
     if (options.image) {
       upsertMeta("property", "og:image", options.image);
     }
@@ -79,7 +81,7 @@ export function useSEO(options: SEOOptions) {
     upsertMeta("name", "twitter:title", fullTitle);
     upsertMeta("name", "twitter:description", description);
 
-    upsertLink("canonical", window.location.href);
+    upsertLink("canonical", pageUrl.href);
     upsertMeta("name", "robots", options.noindex ? "noindex, nofollow" : "index, follow");
 
     upsertSchema(options.schema);

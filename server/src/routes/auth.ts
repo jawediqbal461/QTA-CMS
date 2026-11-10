@@ -7,10 +7,14 @@ import { recordAudit } from "../lib/audit.js";
 import { requireAuth } from "../middleware/auth.js";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { tutorFields } from "../lib/tutorProfile.js";
+import { queueVerification, validVerification } from "../lib/verification.js";
+import { mailConfig } from "../lib/notifications.js";
+import { timeZoneSchema } from "../lib/scheduling.js";
 
 export const authRouter = Router();
 
 const BCRYPT_ROUNDS = 12;
+const emailUnavailable = "Email verification is temporarily unavailable. Please try again later or contact the academy.";
 const registrationPassword = z.string().min(10).refine((value) => Buffer.byteLength(value, "utf8") <= 72);
 
 // One-time setup: creates the first academy and its admin account.
@@ -108,6 +112,7 @@ const registerGuardianSchema = z.object({
 });
 
 authRouter.post("/register/:role(guardian|student)", asyncHandler(async (req, res) => {
+  if (!mailConfig()) return res.status(503).json({ error: emailUnavailable });
   const role = req.params.role === "student" ? "STUDENT" : "GUARDIAN";
   const parsed = registerGuardianSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -135,6 +140,7 @@ authRouter.post("/register/:role(guardian|student)", asyncHandler(async (req, re
     await tx.academyMembership.create({
       data: { academyId: academy.id, accountId: acc.id, role },
     });
+    await queueVerification(tx, acc.id, academy.id);
     return acc;
   });
 
@@ -146,17 +152,7 @@ authRouter.post("/register/:role(guardian|student)", asyncHandler(async (req, re
     targetId: account.id,
   });
 
-  const token = signSession({ accountId: account.id, academyId: academy.id, role });
-  res.status(201).json({
-    token,
-    account: {
-      id: account.id,
-      email: account.email,
-      fullName: account.fullName,
-      role,
-      academy: { id: academy.id, name: academy.name, slug: academy.slug },
-    },
-  });
+  res.status(201).json({ verificationRequired: true });
 }));
 
 const registerTutorSchema = tutorFields.extend({
@@ -166,6 +162,7 @@ const registerTutorSchema = tutorFields.extend({
 });
 
 authRouter.post("/register/tutor", asyncHandler(async (req, res) => {
+  if (!mailConfig()) return res.status(503).json({ error: emailUnavailable });
   const parsed = registerTutorSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Check your email, name, profile fields, and password. Passwords must be at least 10 characters and at most 72 bytes." });
@@ -202,6 +199,7 @@ authRouter.post("/register/tutor", asyncHandler(async (req, res) => {
         approvalStatus: "PENDING",
       },
     });
+    await queueVerification(tx, acc.id, academy.id);
     return acc;
   });
 
@@ -213,18 +211,26 @@ authRouter.post("/register/tutor", asyncHandler(async (req, res) => {
     targetId: account.id,
   });
 
-  const token = signSession({ accountId: account.id, academyId: academy.id, role: "TUTOR" });
-  res.status(201).json({
-    token,
-    account: {
-      id: account.id,
-      email: account.email,
-      fullName: account.fullName,
-      role: "TUTOR",
-      approvalStatus: "PENDING",
-      academy: { id: academy.id, name: academy.name, slug: academy.slug },
-    },
+  res.status(201).json({ verificationRequired: true });
+}));
+
+authRouter.post("/verify-email", asyncHandler(async (req, res) => {
+  const parsed = z.object({ token: z.string().max(150).regex(/^[a-f0-9-]+\.\d+\.[a-f0-9]{64}$/) }).safeParse(req.body);
+  const invalid = () => res.status(400).json({ error: "This verification link is invalid or expired. Attempt to sign in to request a new one." });
+  if (!parsed.success) return invalid();
+  const account = await prisma.account.findUnique({
+    where: { id: parsed.data.token.split(".")[0] },
+    select: { id: true, email: true },
   });
+  if (!account || !validVerification(parsed.data.token, account.id, account.email)) return invalid();
+  await prisma.$transaction(async (tx) => {
+    await tx.account.updateMany({ where: { id: account.id, email: account.email, emailVerifiedAt: null }, data: { emailVerifiedAt: new Date() } });
+    await tx.portalNotification.updateMany({
+      where: { accountId: account.id, kind: "VERIFY_EMAIL", emailedAt: null },
+      data: { cancelledAt: new Date() },
+    });
+  });
+  res.json({ verified: true });
 }));
 
 const loginSchema = z.object({
@@ -256,6 +262,11 @@ authRouter.post("/login", asyncHandler(async (req, res) => {
   const membership = account.memberships.find((m) => m.status === "ACTIVE");
   if (!membership) {
     return res.status(403).json({ error: "No active academy membership" });
+  }
+  if (!account.emailVerifiedAt && membership.role !== "PLATFORM_ADMIN" && membership.role !== "ACADEMY_ADMIN") {
+    if (!mailConfig()) return res.status(503).json({ error: emailUnavailable });
+    await queueVerification(prisma, account.id, membership.academyId);
+    return res.status(403).json({ error: "Verify your email before signing in. A verification link has been queued if one was not requested recently." });
   }
 
   const token = signSession({
@@ -293,7 +304,30 @@ authRouter.get("/me", requireAuth, asyncHandler(async (req, res) => {
     id: account.id,
     email: account.email,
     fullName: account.fullName,
+    timeZone: account.timeZone,
     role: req.session!.role,
     academyId: req.session!.academyId,
   });
+}));
+
+authRouter.patch("/me", requireAuth, asyncHandler(async (req, res) => {
+  const parsed = z.object({ fullName: z.string().trim().min(2).max(120), timeZone: timeZoneSchema.optional() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Enter a valid name and IANA timezone." });
+  const { accountId, role, academyId } = req.session!;
+  const updated = await prisma.$transaction(async (tx) => {
+    const previous = role === "TUTOR" ? await tx.account.findUnique({ where: { id: accountId }, select: { fullName: true } }) : null;
+    const account = await tx.account.updateMany({
+      where: { id: accountId, memberships: { every: { academyId } } },
+      data: { fullName: parsed.data.fullName, ...(role === "TUTOR" ? {} : { timeZone: parsed.data.timeZone }) },
+    });
+    if (account.count && previous && previous.fullName !== parsed.data.fullName) {
+      await tx.tutorProfile.updateMany({
+        where: { accountId, academyId, approvalStatus: "APPROVED" },
+        data: { approvalStatus: "PENDING" },
+      });
+    }
+    return account.count;
+  });
+  if (!updated) return res.status(409).json({ error: "Contact the academy to update this shared account." });
+  res.json({ saved: true });
 }));
