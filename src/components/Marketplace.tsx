@@ -533,6 +533,70 @@ function GuardianWorkspace({ token, role, preferredTutor }: { token: string; rol
   </>;
 }
 
+export function AcademyOperations() {
+  const token = getStoredAdminToken();
+  const [version, setVersion] = useState(0);
+  const action = useAction();
+  const operations = useResource<{
+    missed: Booking[];
+    audit: Array<{ id: string; action: string; targetType: string; targetId: string | null; createdAt: string;
+      actor: { fullName: string } | null; resolution: { status: string; reason: string } | null }>;
+  }>(token ? "/admin/operations" : null, token ?? undefined, version);
+  useSEO({ title: "Academy operations", noindex: true });
+  if (!token || operations?.unauthorized) return <Page title="Academy operations">
+    <Link to="/admin">Sign in as an administrator</Link>
+  </Page>;
+  return <Page title="Academy operations">
+    <div className="flex gap-4">
+      <Link className="text-emerald-300 underline" to="/admin">Admin CMS</Link>
+      <button className="text-emerald-300 underline" onClick={() => setVersion((value) => value + 1)}>Refresh queue</button>
+    </div>
+    <ErrorText value={action.error ?? operations?.error} />
+    {!operations && <p role="status">Loading operations…</p>}
+    {operations?.data && <>
+      <section className={panel}>
+        <h2 className="text-xl font-semibold">Unresolved past lessons</h2>
+        {operations.data.missed.length === 0 && <p>No lessons need review.</p>}
+        {operations.data.missed.map((booking) => (
+          <form key={booking.id} className="space-y-3 border-t border-neutral-700 pt-4" onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            void action.run(async () => {
+              try {
+                await accountRequest(`/admin/operations/bookings/${booking.id}`, token, "PATCH", {
+                  status: form.get("status"), reason: form.get("reason"), expectedStart: booking.scheduledAtUtc,
+                });
+              } finally { setVersion((value) => value + 1); }
+            });
+          }}>
+            <LessonDetails booking={booking} />
+            <label className="block">Resolution<select className={input} name="status" required defaultValue="">
+              <option value="">Choose a resolution</option>
+              <option value="NO_SHOW">Mark no-show</option>
+              <option value="CANCELLED">Cancel lesson</option>
+            </select></label>
+            <label className="block">Internal reason<textarea className={input} name="reason" required minLength={5} maxLength={500} /></label>
+            <button className={button} disabled={action.busy}>Resolve lesson</button>
+          </form>
+        ))}
+      </section>
+      <section className={panel}>
+        <h2 className="text-xl font-semibold">Recent audit activity</h2>
+        {operations.data.audit.length === 0 && <p>No events recorded.</p>}
+        <ul className="space-y-3">
+          {operations.data.audit.map((event) => (
+            <li key={event.id} className="break-words border-t border-neutral-700 pt-3">
+              <p>{localTime(event.createdAt)} · {event.actor?.fullName ?? "System"} · {event.action}</p>
+              <p className="text-sm text-neutral-400">{event.targetType} {event.targetId}</p>
+              {event.resolution && <p>{event.resolution.status.replaceAll("_", " ")} · {event.resolution.reason}</p>}
+            </li>
+          ))}
+        </ul>
+      </section>
+    </>}
+  </Page>;
+}
+
 export function TutorReview() {
   const token = getStoredAdminToken();
   const [version, setVersion] = useState(0);

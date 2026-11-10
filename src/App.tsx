@@ -18,7 +18,7 @@ import { clearStoredAdminToken, getStoredAdminToken } from "./lib/api";
 // Everything else is only needed after explicit navigation, so it's
 // code-split into its own chunk to keep the initial bundle smaller.
 import PublicHome from "./components/PublicHome";
-import { AccountPortal, PublicTutors, TutorReview } from "./components/Marketplace";
+import { AcademyOperations, AccountPortal, PublicTutors, TutorReview } from "./components/Marketplace";
 const Classroom = lazy(() => import("./components/Classroom"));
 const AdminCMS = lazy(() => import("./components/AdminCMS"));
 const AdminLogin = lazy(() => import("./components/AdminLogin"));
@@ -826,6 +826,7 @@ export default function App() {
             <Route path="/guardian" element={React.createElement(AccountPortal, { key: "guardian", role: "GUARDIAN" })} />
             <Route path="/tutor" element={React.createElement(AccountPortal, { key: "tutor", role: "TUTOR" })} />
             <Route path="/admin/tutors" element={<TutorReview />} />
+            <Route path="/admin/operations" element={<AcademyOperations />} />
 
             {/* Live Classroom Simulator */}
             <Route path="/classroom" element={
@@ -866,8 +867,9 @@ export default function App() {
             <Route path="/admin" element={
               isAdminAuthenticated ? (
                 <>
-                  <div className="mx-auto max-w-5xl px-4 pt-4">
+                  <div className="mx-auto flex max-w-5xl flex-wrap gap-4 px-4 pt-4">
                     <button className="text-emerald-300 underline" onClick={() => navigate("/admin/tutors")}>Review tutor applications</button>
+                    <button className="text-emerald-300 underline" onClick={() => navigate("/admin/operations")}>Lesson recovery and audit</button>
                   </div>
                   <AdminCMS
                     curriculums={curriculums}

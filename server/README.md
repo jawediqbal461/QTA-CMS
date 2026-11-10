@@ -190,3 +190,47 @@ Apply migration `0003_lesson_progress` before restarting the API. It links new p
 Tutors add a private HTTPS meeting link to each booking. The API releases the link only to the assigned tutor, enrolled student, or an authorized guardian, from 10 minutes before the scheduled start through 15 minutes after the scheduled end. A reschedule clears the link so the tutor can attach the correct meeting. The meeting provider controls admission and any links already shared.
 
 Tutors mark a lesson completed after it starts, or mark a no-show after the scheduled end. Completion records guardian-visible notes and one progress entry in the same transaction. Guardians can review the results in their lesson history.
+
+## Pilot operations and restore rehearsal
+
+Open **Admin → Lesson recovery and audit** to resolve a past booking that still shows as active. Confirm what happened with the tutor and family, choose No-show or Cancelled, and enter a short internal reason. The tutor and family see the new status. The audit entry records who made the change and why. If a replacement lesson is needed, have the guardian or adult learner book a new slot.
+
+Run the following commands from the server directory on the VPS. They use the existing Compose service and create a separate rehearsal database in the same PostgreSQL container. Check each command before continuing. Keep the dump outside the web root and restrict its permissions. Use synthetic staging data for the pilot rehearsal.
+
+```bash
+umask 077
+```
+```bash
+mkdir -p "$HOME/qta-backups"
+```
+```bash
+backup="$HOME/qta-backups/qta-$(date -u +%Y%m%dT%H%M%SZ).dump"
+```
+```bash
+docker compose exec -T postgres sh -c 'exec pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup"
+```
+```bash
+test -s "$backup" && docker compose exec -T postgres pg_restore --list < "$backup"
+```
+```bash
+rehearsal_db="qta_restore_$(date -u +%Y%m%d%H%M%S)"
+```
+```bash
+docker compose exec -T -e REHEARSAL_DB="$rehearsal_db" postgres sh -c 'exec createdb -U "$POSTGRES_USER" "$REHEARSAL_DB"'
+```
+```bash
+docker compose exec -T -e REHEARSAL_DB="$rehearsal_db" postgres sh -c 'exec pg_restore -U "$POSTGRES_USER" -d "$REHEARSAL_DB" --no-owner --exit-on-error --single-transaction' < "$backup"
+```
+```bash
+docker compose exec -T -e REHEARSAL_DB="$rehearsal_db" postgres sh -c 'exec psql -U "$POSTGRES_USER" -d "$REHEARSAL_DB" -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM academies) AS academies, (SELECT count(*) FROM bookings) AS bookings, (SELECT count(*) FROM progress_entries) AS progress, (SELECT count(*) FROM audit_events) AS audit_events;"'
+```
+
+Confirm the restored booking, progress, and audit counts against the rehearsal fixtures and record the restore time. Leave the live API pointed at its original database. Retain the dump according to the academy's backup policy.
+
+Before opening the pilot, rehearse these steps on desktop and mobile with synthetic accounts:
+
+1. Register a tutor, approve the profile, and verify public availability.
+2. Register a guardian, add a learner, book and reschedule a lesson, and confirm the new time on both desks.
+3. Add and open a meeting link with an authorized account. Complete the lesson and confirm exactly one progress entry in the guardian's history.
+4. Resolve a separate past booking in Admin, confirm the status on both desks, and verify the audit actor and reason.
+5. Restore a staging dump into the separate rehearsal database and record the checks, date, and owner.
