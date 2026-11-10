@@ -62,6 +62,12 @@ enum ResourceAccessLevel {
   ENROLLED
 }
 
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  REFUNDED
+}
+
 model Academy {
   id          String               @id @default(uuid())
   name        String
@@ -73,6 +79,7 @@ model Academy {
   curricula   Curriculum[]
   auditEvents AuditEvent[]
   learningRequests LearningRequest[]
+  payments         PilotPayment[]
 
   @@map("academies")
 }
@@ -100,6 +107,8 @@ model Account {
   studentRequests  LearningRequest[] @relation("StudentRequests")
   adminAssignments LearningRequest[] @relation("AdminAssignments")
   createdResources Resource[]        @relation("ResourceCreatedBy")
+  payerPayments    PilotPayment[]    @relation("PayerPayments")
+  confirmerPayments PilotPayment[]   @relation("ConfirmerPayments")
 
   @@map("accounts")
 }
@@ -208,6 +217,7 @@ model Booking {
 
   lessonSession LessonSession?
   progressEntry ProgressEntry?
+  payments      PilotPayment[]  @relation("BookingPayments")
 
   @@index([studentId, scheduledAtUtc])
   @@map("bookings")
@@ -313,6 +323,32 @@ model Resource {
 
   @@index([program, level, language, published])
   @@map("resources")
+}
+
+model PilotPayment {
+  id            String        @id @default(uuid())
+  academyId     String
+  academy       Academy       @relation(fields: [academyId], references: [id], onDelete: Cascade)
+  bookingId     String?
+  booking       Booking?      @relation("BookingPayments", fields: [bookingId], references: [id], onDelete: SetNull)
+  payerId       String
+  payer         Account       @relation("PayerPayments", fields: [payerId], references: [id], onDelete: Cascade)
+  amount        Decimal       @db.Decimal(10, 2)
+  currency      String        @default("USD")
+  method        String
+  reference     String?
+  notes         String?
+  status        PaymentStatus @default(PENDING)
+  confirmedAt   DateTime?
+  confirmedById String?
+  confirmedBy   Account?      @relation("ConfirmerPayments", fields: [confirmedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([academyId, status, createdAt])
+  @@index([bookingId])
+  @@index([payerId])
+  @@map("pilot_payments")
 }
 
 model LearningRequest {

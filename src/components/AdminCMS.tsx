@@ -11,9 +11,10 @@ import Breadcrumbs from "./Breadcrumbs";
 import { useSEO } from "../hooks/useSEO";
 import { AccountsPanel, TutorsPanel, TutorProfilesPanel, OperationsPanel, RequestsPanel } from "./Marketplace";
 import { ResourcesAdminPanel } from "./ResourcesPage";
+import { PaymentsAdminPanel } from "./PricingPage";
 
 type AdminSubTab = "overview" | "architecture" | "sitemap" | "database" | "curriculum" | "profiles" | "quran_crud" | "blog_crud"
-  | "accounts" | "tutor_applications" | "tutor_profiles" | "requests" | "resources" | "lesson_recovery";
+  | "accounts" | "tutor_applications" | "tutor_profiles" | "requests" | "resources" | "payments" | "lesson_recovery";
 
 interface AdminCMSProps {
   curriculums: Curriculum[];
@@ -797,6 +798,8 @@ export default function AdminCMS({
         ? "Learning Request Matching"
         : activeSubTab === "resources"
         ? "Resource Catalog"
+        : activeSubTab === "payments"
+        ? "Payment Reconciliation"
         : "Lesson Recovery & Audit Log"
     }
   ];
@@ -902,6 +905,17 @@ export default function AdminCMS({
               >
                 <BookOpen size={13} />
                 <span>Resource Catalog</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab("payments")}
+                className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl transition duration-300 flex items-center space-x-2.5 ${
+                  activeSubTab === "payments"
+                    ? "bg-sky-500 text-neutral-950 shadow-lg shadow-sky-500/10 font-extrabold"
+                    : "bg-neutral-950/80 text-neutral-400 hover:text-white border border-neutral-850 hover:bg-neutral-900"
+                }`}
+              >
+                <DollarSign size={13} />
+                <span>Pilot Payments</span>
               </button>
               <button
                 onClick={() => setActiveSubTab("lesson_recovery")}
@@ -3293,6 +3307,13 @@ export default function AdminCMS({
         {activeSubTab === "resources" && (
           <div className="animate-fade-in">
             <ResourcesAdminPanel token={token} />
+          </div>
+        )}
+
+        {/* SUB-TAB: PILOT PAYMENTS (live data) */}
+        {activeSubTab === "payments" && (
+          <div className="animate-fade-in">
+            <PaymentsAdminPanel token={token} />
           </div>
         )}
 

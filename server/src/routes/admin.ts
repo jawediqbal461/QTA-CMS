@@ -327,3 +327,116 @@ adminRouter.patch("/requests/:id/assign", asyncHandler(async (req, res) => {
   if (outcome === "no_tutor") return res.status(404).json({ error: "Approved tutor not found." });
   res.json({ saved: true });
 }));
+
+// Pilot Payments — M09
+const paymentSchema = z.object({
+  bookingId:  z.string().uuid().optional(),
+  payerId:    z.string().uuid(),
+  amount:     z.number().positive().multipleOf(0.01),
+  currency:   z.string().trim().length(3).default("USD"),
+  method:     z.string().trim().min(1).max(60),
+  reference:  z.string().trim().max(120).optional(),
+  notes:      z.string().trim().max(1000).optional(),
+});
+
+const paymentSelect = {
+  id: true, bookingId: true, payerId: true, amount: true, currency: true,
+  method: true, reference: true, notes: true, status: true,
+  confirmedAt: true, confirmedById: true, createdAt: true, updatedAt: true,
+  payer: { select: { fullName: true, email: true } },
+  confirmedBy: { select: { fullName: true } },
+  booking: { select: { scheduledAtUtc: true, student: { select: { fullName: true } } } },
+} as const;
+
+adminRouter.get("/payments", asyncHandler(async (req, res) => {
+  const { academyId } = req.session!;
+  const payments = await prisma.pilotPayment.findMany({
+    where: { academyId },
+    orderBy: { createdAt: "desc" },
+    select: paymentSelect,
+  });
+  res.json(payments);
+}));
+
+adminRouter.post("/payments", asyncHandler(async (req, res) => {
+  const { academyId, accountId } = req.session!;
+  const parsed = paymentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { bookingId, payerId, amount, currency, method, reference, notes } = parsed.data;
+
+  if (bookingId) {
+    const booking = await prisma.booking.findFirst({ where: { id: bookingId, academyId } });
+    if (!booking) return res.status(404).json({ error: "Booking not found in this academy." });
+  }
+  const payer = await prisma.account.findUnique({ where: { id: payerId } });
+  if (!payer) return res.status(404).json({ error: "Payer account not found." });
+
+  const payment = await prisma.$transaction(async (tx) => {
+    const p = await tx.pilotPayment.create({
+      data: { academyId, bookingId, payerId, amount, currency, method, reference, notes },
+      select: paymentSelect,
+    });
+    await tx.auditEvent.create({
+      data: {
+        actorId: accountId, academyId,
+        action: "payment.created",
+        targetType: "pilot_payment", targetId: p.id,
+        metadata: { amount: amount.toString(), method },
+      },
+    });
+    return p;
+  });
+  res.status(201).json(payment);
+}));
+
+adminRouter.patch("/payments/:id/confirm", asyncHandler(async (req, res) => {
+  const { academyId, accountId } = req.session!;
+  const payment = await prisma.pilotPayment.findFirst({
+    where: { id: req.params.id, academyId },
+  });
+  if (!payment) return res.status(404).json({ error: "Payment not found." });
+  if (payment.status !== "PENDING") return res.status(409).json({ error: "Only PENDING payments can be confirmed." });
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const p = await tx.pilotPayment.update({
+      where: { id: req.params.id },
+      data: { status: "CONFIRMED", confirmedAt: new Date(), confirmedById: accountId },
+      select: paymentSelect,
+    });
+    await tx.auditEvent.create({
+      data: {
+        actorId: accountId, academyId,
+        action: "payment.confirmed",
+        targetType: "pilot_payment", targetId: p.id,
+      },
+    });
+    return p;
+  });
+  res.json(updated);
+}));
+
+adminRouter.patch("/payments/:id/refund", asyncHandler(async (req, res) => {
+  const { academyId, accountId } = req.session!;
+  const payment = await prisma.pilotPayment.findFirst({
+    where: { id: req.params.id, academyId },
+  });
+  if (!payment) return res.status(404).json({ error: "Payment not found." });
+  if (payment.status === "REFUNDED") return res.status(409).json({ error: "Payment is already refunded." });
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const p = await tx.pilotPayment.update({
+      where: { id: req.params.id },
+      data: { status: "REFUNDED" },
+      select: paymentSelect,
+    });
+    await tx.auditEvent.create({
+      data: {
+        actorId: accountId, academyId,
+        action: "payment.refunded",
+        targetType: "pilot_payment", targetId: p.id,
+      },
+    });
+    return p;
+  });
+  res.json(updated);
+}));
