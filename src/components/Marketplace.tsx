@@ -1,4 +1,5 @@
 import { createElement, useEffect, useState, type ReactNode } from "react";
+import { ArrowLeft, GraduationCap, LogIn, UserPlus, Users } from "lucide-react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { accountRequest, ApiError, getStoredAdminToken, request } from "../lib/api";
 import { useSEO } from "../hooks/useSEO";
@@ -153,7 +154,7 @@ function AccountForm({ role, register, onSession }: { role: Role; register: bool
   const [params] = useSearchParams();
   const paths = accountPaths[role];
   const query = params.toString() ? `?${params.toString()}` : "";
-  return <form className={panel} onSubmit={(event) => {
+  return <form className="space-y-4 text-xs [&_label]:space-y-1.5 [&_label]:font-bold [&_label]:text-neutral-300 [&_label>input:not([type=checkbox])]:rounded-xl [&_label>input:not([type=checkbox])]:border-neutral-800 [&_label>input:not([type=checkbox])]:bg-neutral-950 [&_label>input:not([type=checkbox])]:px-3.5 [&_label>input:not([type=checkbox])]:py-2.5 [&_label>textarea]:rounded-xl [&_label>textarea]:border-neutral-800 [&_label>textarea]:bg-neutral-950 [&_input]:focus-visible:outline-emerald-500 [&_textarea]:focus-visible:outline-emerald-500" onSubmit={(event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     void action.run(async () => {
@@ -171,17 +172,22 @@ function AccountForm({ role, register, onSession }: { role: Role; register: bool
       onSession(result.token);
     });
   }}>
-    {register && <label className="block">Full name<input className={input} name="fullName" required minLength={2} maxLength={120} autoComplete="name" /></label>}
-    <label className="block">Email<input className={input} name="email" type="email" required autoComplete="email" /></label>
+    <div className={register ? "grid gap-3 sm:grid-cols-2" : ""}>
+      {register && <label className="block">Full Name<input className={input} name="fullName" required minLength={2} maxLength={120} autoComplete="name" /></label>}
+      <label className="block">Email Address<input className={input} name="email" type="email" required autoComplete="email" /></label>
+    </div>
     <label className="block">Password<input className={input} name="password" type="password" required minLength={register ? 10 : undefined} autoComplete={register ? "new-password" : "current-password"} /></label>
     {register && role === "TUTOR" && <ProfileFields />}
-    {register && role === "STUDENT" && <label className="flex items-center gap-2">
+    {register && role === "STUDENT" && <label className="flex items-center gap-2 rounded-xl border border-neutral-800 p-3">
       <input type="checkbox" name="adult" required /> I am an adult registering for my own lessons.
     </label>}
     <ErrorText value={action.error} />
-    <div className="flex flex-wrap items-center gap-4">
-      <button className={button} disabled={action.busy}>{register ? "Create account" : "Sign in"}</button>
-      <Link className="text-emerald-300 underline" to={(register ? paths.login : paths.signup) + query}>
+    <button className={`flex w-full items-center justify-center gap-2 rounded-xl py-3 font-extrabold text-neutral-950 transition disabled:opacity-60 ${role === "TUTOR" ? "bg-amber-500 hover:bg-amber-400" : "bg-emerald-500 hover:bg-emerald-400"}`} disabled={action.busy}>
+      {register ? <UserPlus size={15} /> : <LogIn size={15} />}
+      {action.busy ? "Please wait…" : register ? "Create Account" : "Sign In"}
+    </button>
+    <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 border-t border-neutral-800 pt-4 text-center">
+      <Link className="text-emerald-300 hover:underline" to={(register ? paths.login : paths.signup) + query}>
         {register ? "Already registered? Sign in" : "Create an account"}
       </Link>
       {role !== "TUTOR" && <Link className="text-emerald-300 underline" to={accountPaths[role === "STUDENT" ? "GUARDIAN" : "STUDENT"].login + query}>
@@ -205,12 +211,38 @@ export function AccountPortal({ role, register = false, login = false }: { role:
   const signOut = () => { sessionStorage.removeItem(storageKey); setToken(""); };
 
   if (register || login) {
-    return <Page title={register ? `Create a ${paths.label.toLowerCase()} account` : `${paths.label} login`}>
-      <AccountForm role={role} register={register} onSession={(value) => {
-        sessionStorage.setItem(storageKey, value);
-        navigate(paths.portal + query, { replace: true });
-      }} />
-    </Page>;
+    const teacher = role === "TUTOR";
+    const heading = register ? (teacher ? "Apply to Teach" : role === "STUDENT" ? "Sign Up as a Student" : "Create a Guardian Account") : `${paths.label} Login`;
+    const Icon = teacher ? GraduationCap : Users;
+    return <section className="relative flex min-h-[80vh] items-center justify-center overflow-hidden px-4 py-12 text-neutral-200">
+      <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/4 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500/5 blur-[120px]" />
+      <div className="relative w-full max-w-lg space-y-6 rounded-3xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl md:p-8">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Link to="/" className="inline-flex items-center gap-1 text-xs text-neutral-400 transition hover:text-white">
+            <ArrowLeft size={13} /> Back to Home
+          </Link>
+          {role !== "GUARDIAN" && <Link className="text-xs text-neutral-400 hover:text-emerald-400"
+            to={accountPaths[teacher ? "STUDENT" : "TUTOR"][register ? "signup" : "login"] + query}>
+            {register ? "Sign up" : "Sign in"} as a {teacher ? "Student" : "Teacher"} instead
+          </Link>}
+        </div>
+        <header className="space-y-2 text-center">
+          <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border shadow-lg ${teacher ? "border-amber-500/20 bg-amber-950 text-amber-400" : "border-emerald-500/20 bg-emerald-950 text-emerald-400"}`}>
+            <Icon size={22} />
+          </div>
+          <h1 className="text-xl font-black tracking-tight text-white md:text-2xl">{heading}</h1>
+          <p className="mx-auto max-w-sm text-xs leading-relaxed text-neutral-400">
+            {register && teacher ? "Tell us about your teaching background so we can review your application."
+              : register ? "Create an account to book Quran lessons and track progress."
+                : "Sign in to access your lessons and account."}
+          </p>
+        </header>
+        <AccountForm role={role} register={register} onSession={(value) => {
+          sessionStorage.setItem(storageKey, value);
+          navigate(paths.portal + query, { replace: true });
+        }} />
+      </div>
+    </section>;
   }
   if (!token || session?.unauthorized || (session?.data && session.data.role !== role)) {
     return <Navigate replace to={paths.login + query} />;
