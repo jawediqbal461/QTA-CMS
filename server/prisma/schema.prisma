@@ -49,6 +49,14 @@ enum CurriculumStatus {
   ARCHIVED
 }
 
+enum RequestStatus {
+  PENDING
+  MATCHED
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
 model Academy {
   id          String               @id @default(uuid())
   name        String
@@ -59,6 +67,7 @@ model Academy {
   bookings    Booking[]
   curricula   Curriculum[]
   auditEvents AuditEvent[]
+  learningRequests LearningRequest[]
 
   @@map("academies")
 }
@@ -81,7 +90,10 @@ model Account {
   progressRecorded  ProgressEntry[]    @relation("ProgressRecordedBy")
   progressOf        ProgressEntry[]    @relation("ProgressOfStudent")
   auditEvents    AuditEvent[]
-  notifications  PortalNotification[]
+  notifications    PortalNotification[]
+  guardianRequests LearningRequest[] @relation("GuardianRequests")
+  studentRequests  LearningRequest[] @relation("StudentRequests")
+  adminAssignments LearningRequest[] @relation("AdminAssignments")
 
   @@map("accounts")
 }
@@ -152,6 +164,7 @@ model TutorProfile {
 
   availabilitySlots AvailabilitySlot[]
   bookings          Booking[]          @relation("TutorBookings")
+  assignments       LearningRequest[]  @relation("TutorAssignments")
 
   @@map("tutor_profiles")
 }
@@ -273,4 +286,34 @@ model AuditEvent {
 
   @@index([academyId, createdAt])
   @@map("audit_events")
+}
+
+model LearningRequest {
+  id              String        @id @default(uuid())
+  academyId       String
+  academy         Academy       @relation(fields: [academyId], references: [id], onDelete: Cascade)
+  guardianId      String
+  guardian        Account       @relation("GuardianRequests", fields: [guardianId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         Account       @relation("StudentRequests", fields: [studentId], references: [id], onDelete: Cascade)
+  program         String
+  level           String
+  preferredLang   String
+  budgetMax       Decimal?      @db.Decimal(10, 2)
+  notes           String?
+  status          RequestStatus @default(PENDING)
+  assignedTutorId String?
+  assignedTutor   TutorProfile? @relation("TutorAssignments", fields: [assignedTutorId], references: [accountId])
+  assignedAt      DateTime?
+  assignedById    String?
+  assignedBy      Account?      @relation("AdminAssignments", fields: [assignedById], references: [id])
+  tutorResponse   String?
+  respondedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([academyId, status, createdAt])
+  @@index([guardianId])
+  @@index([assignedTutorId])
+  @@map("learning_requests")
 }

@@ -171,3 +171,35 @@ tutorRouter.post("/bookings/:id/outcome", asyncHandler(async (req, res) => {
   if (result === "conflict") return res.status(409).json({ error: "The lesson changed, is already closed, or is too early to record this outcome." });
   res.json({ status: outcome.status });
 }));
+
+// Assignments — M07
+
+tutorRouter.get("/assignments", asyncHandler(async (req, res) => {
+  const { accountId, academyId } = req.session!;
+  res.json(await prisma.learningRequest.findMany({
+    where: { assignedTutorId: accountId, academyId, status: { in: ["MATCHED", "ACCEPTED"] } },
+    include: {
+      guardian: { select: { id: true, fullName: true } },
+      student: { select: { id: true, fullName: true } },
+    },
+    orderBy: { assignedAt: "desc" },
+  }));
+}));
+
+const respondSchema = z.object({ response: z.enum(["ACCEPTED", "DECLINED"]) });
+
+tutorRouter.patch("/assignments/:id", asyncHandler(async (req, res) => {
+  const parsed = respondSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Choose accept or decline." });
+  const { accountId, academyId } = req.session!;
+  const updated = await prisma.learningRequest.updateMany({
+    where: { id: req.params.id, assignedTutorId: accountId, academyId, status: "MATCHED" },
+    data: {
+      status: parsed.data.response === "ACCEPTED" ? "ACCEPTED" : "DECLINED",
+      tutorResponse: parsed.data.response,
+      respondedAt: new Date(),
+    },
+  });
+  if (!updated.count) return res.status(404).json({ error: "Assignment not found or already responded." });
+  res.json({ response: parsed.data.response });
+}));

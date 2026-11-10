@@ -220,3 +220,59 @@ adminRouter.patch("/memberships/:membershipId", asyncHandler(async (req, res) =>
   if (result === "conflict") return res.status(409).json({ error: "Membership changed. Refresh before trying again." });
   res.json({ membershipId: where.id, status });
 }));
+
+// Learning Requests — M07
+
+adminRouter.get("/requests", asyncHandler(async (req, res) => {
+  const { academyId } = req.session!;
+  res.json(await prisma.learningRequest.findMany({
+    where: { academyId },
+    include: {
+      guardian: { select: { id: true, fullName: true, email: true } },
+      student: { select: { id: true, fullName: true } },
+      assignedTutor: { select: { accountId: true, account: { select: { fullName: true } } } },
+    },
+    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+  }));
+}));
+
+const assignSchema = z.object({ tutorId: z.uuid().nullable() });
+
+adminRouter.patch("/requests/:id/assign", asyncHandler(async (req, res) => {
+  const parsed = assignSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Provide a valid tutor ID or null to unassign." });
+  const { academyId, accountId } = req.session!;
+  const { tutorId } = parsed.data;
+  const outcome = await prisma.$transaction(async (tx) => {
+    const lr = await tx.learningRequest.findFirst({
+      where: { id: req.params.id, academyId, status: { in: ["PENDING", "MATCHED", "DECLINED"] } },
+    });
+    if (!lr) return "missing";
+    if (tutorId) {
+      const tutor = await tx.tutorProfile.findFirst({ where: { accountId: tutorId, academyId, approvalStatus: "APPROVED" } });
+      if (!tutor) return "no_tutor";
+    }
+    await tx.learningRequest.update({
+      where: { id: req.params.id },
+      data: {
+        assignedTutorId: tutorId,
+        assignedAt: tutorId ? new Date() : null,
+        assignedById: tutorId ? accountId : null,
+        status: tutorId ? "MATCHED" : "PENDING",
+        ...(tutorId ? { tutorResponse: null, respondedAt: null } : {}),
+      },
+    });
+    await tx.auditEvent.create({
+      data: {
+        actorId: accountId, academyId,
+        action: tutorId ? "request.assigned" : "request.unassigned",
+        targetType: "learning_request", targetId: req.params.id,
+        metadata: tutorId ? { tutorId } : undefined,
+      },
+    });
+    return "saved";
+  });
+  if (outcome === "missing") return res.status(404).json({ error: "Open request not found." });
+  if (outcome === "no_tutor") return res.status(404).json({ error: "Approved tutor not found." });
+  res.json({ saved: true });
+}));

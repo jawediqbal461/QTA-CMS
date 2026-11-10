@@ -206,3 +206,55 @@ guardianRouter.patch("/bookings/:id", asyncHandler(async (req, res) => {
     return moved;
   });
 }));
+
+// Learning Requests — M07
+
+const requestSchema = z.object({
+  studentId: z.uuid(),
+  program: z.string().trim().min(2).max(80),
+  level: z.string().trim().min(2).max(80),
+  preferredLang: z.string().trim().min(2).max(60),
+  budgetMax: z.number().positive().max(9999).optional(),
+  notes: z.string().trim().max(1000).optional(),
+});
+
+guardianRouter.get("/requests", requireRole("GUARDIAN"), asyncHandler(async (req, res) => {
+  const { accountId, academyId } = req.session!;
+  res.json(await prisma.learningRequest.findMany({
+    where: { guardianId: accountId, academyId },
+    include: {
+      student: { select: { id: true, fullName: true } },
+      assignedTutor: { select: { accountId: true, account: { select: { fullName: true } } } },
+    },
+    orderBy: { createdAt: "desc" },
+  }));
+}));
+
+guardianRouter.post("/requests", requireRole("GUARDIAN"), asyncHandler(async (req, res) => {
+  const parsed = requestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Fill in program, level, and preferred language." });
+  const { accountId, academyId } = req.session!;
+  const { studentId, ...data } = parsed.data;
+  const student = await prisma.account.findFirst({
+    where: { id: studentId, studentLinks: { some: { guardianId: accountId } }, memberships: { some: { academyId, role: "STUDENT", status: "ACTIVE" } } },
+  });
+  if (!student) return res.status(404).json({ error: "Student not found." });
+  const lr = await prisma.learningRequest.create({
+    data: { academyId, guardianId: accountId, studentId, ...data },
+    include: {
+      student: { select: { id: true, fullName: true } },
+      assignedTutor: { select: { accountId: true, account: { select: { fullName: true } } } },
+    },
+  });
+  res.status(201).json(lr);
+}));
+
+guardianRouter.patch("/requests/:id/cancel", requireRole("GUARDIAN"), asyncHandler(async (req, res) => {
+  const { accountId, academyId } = req.session!;
+  const updated = await prisma.learningRequest.updateMany({
+    where: { id: req.params.id, guardianId: accountId, academyId, status: { in: ["PENDING", "MATCHED"] } },
+    data: { status: "CANCELLED" },
+  });
+  if (!updated.count) return res.status(404).json({ error: "Active request not found." });
+  res.json({ status: "CANCELLED" });
+}));

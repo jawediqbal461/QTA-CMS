@@ -2,7 +2,7 @@ import { createElement, useEffect, useState, type ReactNode } from "react";
 import {
   ArrowLeft, GraduationCap, LogIn, UserPlus, Users, Sparkles, Star, Clock, Bell,
   CalendarCheck, ChevronRight, LogOut, ShieldCheck, Search, BookOpen, Wallet,
-  Award, Filter, RotateCcw, Check as CheckIcon, Globe, CheckCircle,
+  Award, Filter, RotateCcw, Check as CheckIcon, Globe, CheckCircle, Inbox,
 } from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { accountRequest, ApiError, request } from "../lib/api";
@@ -26,6 +26,15 @@ type Profile = Tutor & {
   account: { fullName: string; timeZone: string; email?: string }; availabilitySlots: Slot[];
 };
 type Student = { id: string; fullName: string };
+type LearningRequest = {
+  id: string; program: string; level: string; preferredLang: string;
+  budgetMax: string | null; notes: string | null;
+  status: "PENDING" | "MATCHED" | "ACCEPTED" | "DECLINED" | "CANCELLED";
+  assignedAt: string | null; createdAt: string;
+  guardian?: { id: string; fullName: string; email: string };
+  student: { id: string; fullName: string };
+  assignedTutor: { accountId: string; account: { fullName: string } } | null;
+};
 type NotificationItem = { id: string; title: string; message: string; visibleAt: string; readAt: string | null };
 type Booking = {
   id: string; tutorId: string; scheduledAtUtc: string; durationMinutes: number; status: string;
@@ -492,7 +501,7 @@ function AccountForm({ role, register, onSession }: { role: Role; register: bool
   </form>;
 }
 
-type DeskTab = "overview" | "lessons" | "profile" | "notifications";
+type DeskTab = "overview" | "lessons" | "assignments" | "requests" | "profile" | "notifications";
 
 function DeskSidebar({ role, fullName, email, activeTab, setActiveTab, unread, signOut }: {
   role: Role; fullName: string; email: string; activeTab: DeskTab; setActiveTab: (tab: DeskTab) => void;
@@ -501,6 +510,8 @@ function DeskSidebar({ role, fullName, email, activeTab, setActiveTab, unread, s
   const tabs: Array<{ id: DeskTab; label: string; icon: typeof CalendarCheck; count?: number }> = [
     { id: "overview", label: "Overview", icon: CalendarCheck },
     { id: "lessons", label: "Lessons", icon: BookOpen },
+    ...(role === "TUTOR" ? [{ id: "assignments" as DeskTab, label: "Assignments", icon: Inbox }] : []),
+    ...(role === "GUARDIAN" ? [{ id: "requests" as DeskTab, label: "Tutor Requests", icon: Inbox }] : []),
     { id: "profile", label: "My profile", icon: Users },
     { id: "notifications", label: "Notifications", icon: Bell, count: unread },
   ];
@@ -652,6 +663,16 @@ export function AccountPortal({ role, register = false, login = false }: { role:
             <DeskNotifications token={token} timeZone={session.data.timeZone} alerts={alerts}
               onMarkRead={() => setNotifVersion((value) => value + 1)} />
           </div>
+          {role === "TUTOR" && (
+            <div className={activeTab === "assignments" ? "" : "hidden"}>
+              <TutorAssignments token={token} />
+            </div>
+          )}
+          {role === "GUARDIAN" && (
+            <div className={activeTab === "requests" ? "" : "hidden"}>
+              <GuardianRequests token={token} />
+            </div>
+          )}
         </div>
       </div>
     )}
@@ -1117,6 +1138,156 @@ function GuardianWorkspace({ token, role, preferredTutor, deskVersion, timeZone,
   </>;
 }
 
+const reqStatusColor: Record<string, string> = {
+  PENDING: "border-amber-500/25 text-amber-400",
+  MATCHED: "border-sky-500/25 text-sky-400",
+  ACCEPTED: "border-emerald-500/25 text-emerald-400",
+  DECLINED: "border-rose-500/25 text-rose-400",
+  CANCELLED: "border-neutral-700 text-neutral-500",
+};
+
+function TutorAssignments({ token }: { token: string }) {
+  const [version, setVersion] = useState(0);
+  const result = useResource<LearningRequest[]>("/tutor/assignments", token, version);
+  const action = useAction();
+  return <div className="space-y-4">
+    <section className={panel}>
+      <h2 className="flex items-center gap-2 text-sm font-bold text-white">
+        <Inbox size={15} className="text-sky-400" />
+        <span>Your assignments</span>
+      </h2>
+      <p className="text-xs text-neutral-400">The academy team assigns families here. Accept or decline each request.</p>
+      {!result && <p role="status" className="text-sm text-neutral-500">Loading…</p>}
+      <ErrorText value={result?.error ?? action.error} />
+      {result?.data?.length === 0 && <p className="text-sm text-neutral-400">No assignments yet. The admin will assign families to you here.</p>}
+      {result?.data?.map((req) => (
+        <article key={req.id} className="border-t border-neutral-800 pt-3 space-y-2">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-bold text-white">{req.program} · {req.level}</p>
+              <p className="text-xs text-neutral-400">Student: {req.student.fullName} · {req.preferredLang}{req.budgetMax ? ` · max $${req.budgetMax}/hr` : ""}</p>
+            </div>
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${reqStatusColor[req.status] ?? ""}`}>{req.status}</span>
+          </div>
+          {req.notes && <p className="text-xs text-neutral-500 italic line-clamp-3">{req.notes}</p>}
+          {req.status === "MATCHED" && (
+            <div className="flex gap-3">
+              <button className={button} disabled={action.busy} onClick={() => void action.run(async () => {
+                await accountRequest(`/tutor/assignments/${req.id}`, token, "PATCH", { response: "ACCEPTED" });
+                setVersion((v) => v + 1);
+              })}>Accept assignment</button>
+              <button className={dangerLink} disabled={action.busy} onClick={() => void action.run(async () => {
+                await accountRequest(`/tutor/assignments/${req.id}`, token, "PATCH", { response: "DECLINED" });
+                setVersion((v) => v + 1);
+              })}>Decline</button>
+            </div>
+          )}
+          {req.status === "ACCEPTED" && (
+            <p className="text-xs text-emerald-400">Accepted — book a trial lesson from the Lessons tab with this family.</p>
+          )}
+        </article>
+      ))}
+    </section>
+  </div>;
+}
+
+const reqPrograms = ["Quran Reading", "Hifz (Memorisation)", "Tajweed", "Arabic Language", "Islamic Studies"];
+const reqLevels = ["Beginner", "Intermediate", "Advanced"];
+const reqLangs = ["English", "Urdu", "Arabic", "Bengali", "French"];
+
+function GuardianRequests({ token }: { token: string }) {
+  const [version, setVersion] = useState(0);
+  const result = useResource<LearningRequest[]>("/guardian/requests", token, version);
+  const studentsResult = useResource<Student[]>("/guardian/students", token, 0);
+  const action = useAction();
+  const students = studentsResult?.data ?? [];
+  return <div className="space-y-4">
+    <form className={panel} onSubmit={(event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const data = new FormData(form);
+      void action.run(async () => {
+        await accountRequest("/guardian/requests", token, "POST", {
+          studentId: data.get("studentId"),
+          program: data.get("program"),
+          level: data.get("level"),
+          preferredLang: data.get("preferredLang"),
+          ...(data.get("budgetMax") ? { budgetMax: Number(data.get("budgetMax")) } : {}),
+          ...(data.get("notes") ? { notes: String(data.get("notes")) } : {}),
+        });
+        form.reset();
+        setVersion((v) => v + 1);
+      });
+    }}>
+      <h2 className="text-sm font-bold text-white">Request a tutor</h2>
+      <p className="text-xs text-neutral-400">Our team will match you with an approved tutor based on your requirements.</p>
+      <label className="block">Learner
+        <select name="studentId" className={input} required defaultValue="">
+          <option value="">Choose a learner</option>
+          {students.map((s) => <option key={s.id} value={s.id}>{s.fullName}</option>)}
+        </select>
+      </label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block">Program
+          <select name="program" className={input} required defaultValue="">
+            <option value="">Choose a program</option>
+            {reqPrograms.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </label>
+        <label className="block">Level
+          <select name="level" className={input} required defaultValue="">
+            <option value="">Choose a level</option>
+            {reqLevels.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </label>
+        <label className="block">Preferred language
+          <select name="preferredLang" className={input} required defaultValue="">
+            <option value="">Choose a language</option>
+            {reqLangs.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </label>
+        <label className="block">Max hourly rate (USD, optional)
+          <input type="number" name="budgetMax" className={input} min={5} max={9999} step={1} placeholder="e.g. 25" />
+        </label>
+      </div>
+      <label className="block">Additional notes (optional)
+        <textarea name="notes" className={input} rows={3} maxLength={1000} placeholder="e.g. evenings only, female tutor preferred…" />
+      </label>
+      <ErrorText value={action.error} />
+      <button className={button} disabled={action.busy || !students.length}>Submit request</button>
+      {!students.length && <p className="text-xs text-neutral-500">Add a learner first from the Lessons tab, then come back here.</p>}
+    </form>
+    <section className={panel}>
+      <h2 className="text-sm font-bold text-white">Your requests</h2>
+      {!result && <p role="status" className="text-sm text-neutral-500">Loading…</p>}
+      <ErrorText value={result?.error} />
+      {result?.data?.length === 0 && <p className="text-sm text-neutral-400">No requests submitted yet.</p>}
+      {result?.data?.map((req) => (
+        <article key={req.id} className="border-t border-neutral-800 pt-3 space-y-1.5">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-bold text-white">{req.program} · {req.level}</p>
+              <p className="text-xs text-neutral-400">{req.student.fullName} · {req.preferredLang}{req.budgetMax ? ` · max $${req.budgetMax}/hr` : ""}</p>
+            </div>
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${reqStatusColor[req.status] ?? ""}`}>{req.status}</span>
+          </div>
+          {req.assignedTutor && <p className="text-xs text-sky-400">Matched with: {req.assignedTutor.account.fullName}</p>}
+          {req.notes && <p className="text-xs text-neutral-500 italic line-clamp-2">{req.notes}</p>}
+          {["PENDING", "MATCHED"].includes(req.status) && (
+            <button className={dangerLink} disabled={action.busy} onClick={() => {
+              if (!window.confirm("Cancel this tutor request?")) return;
+              void action.run(async () => {
+                await accountRequest(`/guardian/requests/${req.id}/cancel`, token, "PATCH", {});
+                setVersion((v) => v + 1);
+              });
+            }}>Cancel request</button>
+          )}
+        </article>
+      ))}
+    </section>
+  </div>;
+}
+
 type ManagedAccount = {
   membershipId: string;
   role: Role;
@@ -1436,3 +1607,90 @@ export function TutorProfilesPanel({ token }: { token: string }) {
   </>;
 }
 
+export function RequestsPanel({ token }: { token: string }) {
+  const [version, setVersion] = useState(0);
+  const [selected, setSelected] = useState("");
+  const [notice, setNotice] = useState("");
+  const action = useAction();
+  const result = useResource<LearningRequest[]>("/admin/requests", token, version);
+  const tutorsResult = useResource<ManagedAccount[]>("/admin/accounts", token, version);
+  const approvedTutors = (tutorsResult?.data ?? []).filter(
+    (m) => m.role === "TUTOR" && m.account.tutorProfile?.approvalStatus === "APPROVED"
+  );
+  if (result?.unauthorized) return <p className="text-sm text-rose-400">Session expired. Sign in again.</p>;
+  const requests = result?.data ?? [];
+  const active = requests.filter((r) => !["CANCELLED", "ACCEPTED"].includes(r.status));
+  const completed = requests.filter((r) => ["CANCELLED", "ACCEPTED"].includes(r.status));
+  return <>
+    <ErrorText value={action.error || result?.error} />
+    {notice && <p role="status" className="rounded-xl border border-emerald-500/25 bg-emerald-950/40 px-3.5 py-2.5 text-xs font-medium text-emerald-300">{notice}</p>}
+    {!result && token && <p role="status" className="text-sm text-neutral-500">Loading requests…</p>}
+    {result?.data && !requests.length && (
+      <div className={panel}><p className="text-sm text-neutral-400">No learning requests yet. Guardians submit requests from their portal.</p></div>
+    )}
+    {active.map((req) => (
+      <article key={req.id} className={panel}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-sm font-bold text-white">{req.program} · {req.level}</h2>
+              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${reqStatusColor[req.status] ?? ""}`}>{req.status}</span>
+            </div>
+            <p className="mt-0.5 text-xs text-neutral-400">
+              Family: {req.guardian?.fullName} · Student: {req.student.fullName} · {req.preferredLang}
+              {req.budgetMax ? ` · max $${req.budgetMax}/hr` : ""}
+            </p>
+            {req.assignedTutor && <p className="mt-0.5 text-xs text-sky-400">Assigned to: {req.assignedTutor.account.fullName}</p>}
+          </div>
+          <button className={ghostLink} type="button" onClick={() => { setSelected(selected === req.id ? "" : req.id); setNotice(""); }}>
+            {selected === req.id ? "Close" : "Assign tutor"}
+          </button>
+        </div>
+        {req.notes && <p className="text-xs text-neutral-500 italic line-clamp-2">{req.notes}</p>}
+        {selected === req.id && (
+          <form className="space-y-3 border-t border-neutral-800 pt-3" onSubmit={(event) => {
+            event.preventDefault();
+            const tutorId = (new FormData(event.currentTarget).get("tutorId") as string) || null;
+            setNotice("");
+            void action.run(async () => {
+              await accountRequest(`/admin/requests/${req.id}/assign`, token, "PATCH", { tutorId });
+              setNotice(`Request ${tutorId ? "assigned" : "unassigned"} successfully.`);
+              setSelected("");
+              setVersion((v) => v + 1);
+            });
+          }}>
+            <label className="block text-xs font-bold text-neutral-300">Assign an approved tutor
+              <select name="tutorId" className={input} defaultValue={req.assignedTutor?.accountId ?? ""}>
+                <option value="">— Unassign / leave unmatched —</option>
+                {approvedTutors.map(({ account }) => (
+                  <option key={account.id} value={account.id}>
+                    {account.fullName}{account.tutorProfile ? ` · ${account.tutorProfile.specialties.slice(0, 2).join(", ")}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className={button} disabled={action.busy}>Save assignment</button>
+          </form>
+        )}
+      </article>
+    ))}
+    {completed.length > 0 && (
+      <details className={panel}>
+        <summary className="cursor-pointer text-xs font-bold text-neutral-500">Completed &amp; Cancelled ({completed.length})</summary>
+        <div className="mt-3 space-y-3">
+          {completed.map((req) => (
+            <div key={req.id} className="border-t border-neutral-800 pt-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-bold text-neutral-300">{req.program} · {req.level}</p>
+                  <p className="text-xs text-neutral-500">{req.guardian?.fullName} · {req.student.fullName}</p>
+                </div>
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${reqStatusColor[req.status] ?? ""}`}>{req.status}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </details>
+    )}
+  </>;
+}
