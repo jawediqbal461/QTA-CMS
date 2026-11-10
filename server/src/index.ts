@@ -19,14 +19,19 @@ app.use(
 );
 app.use(express.json());
 
-app.get("/health", async (_req, res) => {
+// Registered at both paths: the Nginx proxy forwards the full
+// /api/* prefix as-is (see server/README.md), but /health alone is
+// handy for direct checks against 127.0.0.1:4000 on the VPS.
+const healthHandler: express.RequestHandler = async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ status: "ok", db: "connected" });
   } catch {
     res.status(503).json({ status: "degraded", db: "unreachable" });
   }
-});
+};
+app.get("/health", healthHandler);
+app.get("/api/health", healthHandler);
 
 app.use("/api/auth", authRouter);
 
