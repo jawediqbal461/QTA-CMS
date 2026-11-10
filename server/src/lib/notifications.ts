@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import nodemailer from "nodemailer";
 import { prisma } from "./prisma.js";
 import { verificationToken } from "./verification.js";
 
@@ -39,13 +40,18 @@ export async function notifyBooking(tx: Prisma.TransactionClient, booking: Booki
   ] });
 }
 
+// SMTP, not a transactional-email API — works with any mailbox (Hestia's
+// own mail server, Gmail, a hosting provider's SMTP, etc.).
 export function mailConfig() {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const host = process.env.SMTP_HOST?.trim();
+  const port = Number(process.env.SMTP_PORT || 587);
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASSWORD;
   const from = process.env.MAIL_FROM?.trim();
-  if (!apiKey || !from || !process.env.PUBLIC_APP_URL) return null;
+  if (!host || !user || !pass || !from || !process.env.PUBLIC_APP_URL || !Number.isInteger(port) || port <= 0) return null;
   try {
     const app = new URL(process.env.PUBLIC_APP_URL);
-    return app.protocol === "https:" && !app.username && !app.password ? { apiKey, from, app } : null;
+    return app.protocol === "https:" && !app.username && !app.password ? { host, port, user, pass, from, app } : null;
   } catch {
     return null;
   }
@@ -54,10 +60,14 @@ export function mailConfig() {
 export function startNotificationWorker() {
   const config = mailConfig();
   if (!config) {
-    console.warn("Email delivery is disabled. Configure RESEND_API_KEY, MAIL_FROM, and an HTTPS PUBLIC_APP_URL.");
+    console.warn("Email delivery is disabled. Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, MAIL_FROM, and an HTTPS PUBLIC_APP_URL.");
     return;
   }
-  const { apiKey, from, app } = config;
+  const { host, port, user, pass, from, app } = config;
+  const transporter = nodemailer.createTransport({
+    host, port, secure: port === 465, auth: { user, pass },
+    connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 10_000,
+  });
   let running = false;
   const tick = async () => {
     if (running) return;
@@ -95,12 +105,11 @@ export function startNotificationWorker() {
           membership.role === "TUTOR" ? "/tutor" : membership.role === "GUARDIAN" ? "/guardian" : "/student", app);
         if (verify) url.hash = verificationToken(event.accountId, event.account.email, event.createdAt);
         try {
-          const response = await fetch("https://api.resend.com/emails", {
-            method: "POST", signal: AbortSignal.timeout(10_000),
-            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "Idempotency-Key": event.id },
-            body: JSON.stringify({ from, to: [event.account.email], subject: event.title, text: `${event.message}\n\n${url.href}` }),
+          await transporter.sendMail({
+            from, to: event.account.email, subject: event.title,
+            text: `${event.message}\n\n${url.href}`,
+            headers: { "X-Idempotency-Key": event.id },
           });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
           await prisma.portalNotification.update({ where: { id: event.id }, data: { emailedAt: new Date() } });
         } catch (error) {
           console.error("Notification email failed", event.id, error instanceof Error ? error.message : "Unknown error");

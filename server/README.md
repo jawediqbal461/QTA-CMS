@@ -193,10 +193,13 @@ Tutors mark a lesson completed after it starts, or mark a no-show after the sche
 
 ## Account verification and class notifications
 
-Apply migration `0004_verified_accounts_notifications` and configure the following in `server/.env` before deploying this release:
+Apply migration `0004_verified_accounts_notifications` and configure the following in `server/.env` before deploying this release. Mail goes out over plain SMTP, so any mailbox works — Hestia's own mail server for this domain, Gmail, a hosting provider's SMTP, etc.:
 
 - `PUBLIC_APP_URL` is the HTTPS origin for login and verification links. Use `https://new.qurantutorsacademy.com` for staging.
-- `RESEND_API_KEY` is the server-only sending key. `MAIL_FROM` must use a verified sender domain. Configure the domain in Resend and validate delivery to a controlled inbox before inviting users.
+- `SMTP_HOST`, `SMTP_PORT` (587 for STARTTLS, 465 for implicit TLS), `SMTP_USER`, `SMTP_PASSWORD` — the mailbox's own login details.
+- `MAIL_FROM` must be a real address the SMTP account is allowed to send as (usually the same as `SMTP_USER`, or an alias on the same domain) — most providers reject a `From` that doesn't match the authenticated account.
+
+If using Hestia's built-in mail server for `qurantutorsacademy.com`: create a mailbox in Hestia (**Mail → Add Account**, e.g. `notifications@qurantutorsacademy.com`), then set `SMTP_HOST` to that domain's mail hostname (Hestia shows this on the mail domain's page, typically `mail.<domain>` or the server hostname), `SMTP_PORT=587`, `SMTP_USER` to the full mailbox address, and `SMTP_PASSWORD` to the mailbox's password.
 
 Check `curl -fsS https://new.qurantutorsacademy.com/api/health/email` after restarting the API. It returns `configured` when the required configuration is present, and HTTP 503 otherwise. The check confirms configuration only. Verify provider delivery to a controlled inbox as a separate release gate. Signup refuses to create an account when the mail configuration is missing or invalid.
 
