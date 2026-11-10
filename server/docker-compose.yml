@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: qta-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-qta}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-qta_cms}
+    ports:
+      # Bound to 127.0.0.1 only — never exposed on the VPS's public IP.
+      # The API server (running on the same host) connects over localhost.
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - qta_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-qta}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  qta_postgres_data:

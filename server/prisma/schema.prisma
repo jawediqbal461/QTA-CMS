@@ -1,0 +1,250 @@
+// QTA CMS backend data model (Phase 1 MVP)
+// See PROJECT_PLAN.md "Architecture and data" for the source requirements:
+// accounts, academy memberships, guardian-student links, tutor profiles,
+// availability, bookings, lesson sessions, progress entries, curriculum,
+// content revisions, and audit events — all scoped by academy_id.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountRole {
+  PLATFORM_ADMIN
+  ACADEMY_ADMIN
+  TUTOR
+  GUARDIAN
+  STUDENT
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+enum TutorApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum BookingStatus {
+  BOOKED
+  RESCHEDULED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum CurriculumStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+model Academy {
+  id          String               @id @default(uuid())
+  name        String
+  slug        String               @unique
+  createdAt   DateTime             @default(now())
+  memberships AcademyMembership[]
+  tutors      TutorProfile[]
+  bookings    Booking[]
+  curricula   Curriculum[]
+  auditEvents AuditEvent[]
+
+  @@map("academies")
+}
+
+model Account {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  timeZone     String   @default("UTC")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships    AcademyMembership[]
+  tutorProfile   TutorProfile?
+  guardianLinks  GuardianStudentLink[] @relation("GuardianLinks")
+  studentLinks   GuardianStudentLink[] @relation("StudentLinks")
+  bookingsAsStudent Booking[]          @relation("StudentBookings")
+  progressRecorded  ProgressEntry[]    @relation("ProgressRecordedBy")
+  progressOf        ProgressEntry[]    @relation("ProgressOfStudent")
+  auditEvents    AuditEvent[]
+
+  @@map("accounts")
+}
+
+model AcademyMembership {
+  id        String           @id @default(uuid())
+  academyId String
+  academy   Academy          @relation(fields: [academyId], references: [id], onDelete: Cascade)
+  accountId String
+  account   Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  role      AccountRole
+  status    MembershipStatus @default(ACTIVE)
+  createdAt DateTime         @default(now())
+
+  @@unique([academyId, accountId])
+  @@map("academy_memberships")
+}
+
+model GuardianStudentLink {
+  id         String   @id @default(uuid())
+  guardianId String
+  guardian   Account  @relation("GuardianLinks", fields: [guardianId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    Account  @relation("StudentLinks", fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([guardianId, studentId])
+  @@map("guardian_student_links")
+}
+
+model TutorProfile {
+  accountId       String               @id
+  account         Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  academyId       String
+  academy         Academy              @relation(fields: [academyId], references: [id], onDelete: Cascade)
+  specialties     String[]
+  experienceYears Int
+  bio             String?
+  hourlyRate      Decimal              @db.Decimal(10, 2)
+  languages       String[]
+  approvalStatus  TutorApprovalStatus  @default(PENDING)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  availabilitySlots AvailabilitySlot[]
+  bookings          Booking[]          @relation("TutorBookings")
+
+  @@map("tutor_profiles")
+}
+
+model AvailabilitySlot {
+  id        String       @id @default(uuid())
+  tutorId   String
+  tutor     TutorProfile @relation(fields: [tutorId], references: [accountId], onDelete: Cascade)
+  weekday   Int // 0 = Sunday .. 6 = Saturday, interpreted in `timeZone`
+  startTime String // "09:00"
+  endTime   String // "10:00"
+  timeZone  String // IANA tz, e.g. "Asia/Karachi"
+  createdAt DateTime     @default(now())
+
+  @@index([tutorId, weekday])
+  @@map("availability_slots")
+}
+
+// Booking collisions are prevented at the application layer with a
+// serializable transaction (see src/routes/bookings.ts), and this
+// unique constraint is the hard backstop: no tutor can hold two active
+// bookings at the exact same instant.
+model Booking {
+  id              String        @id @default(uuid())
+  academyId       String
+  academy         Academy       @relation(fields: [academyId], references: [id], onDelete: Cascade)
+  tutorId         String
+  tutor           TutorProfile  @relation("TutorBookings", fields: [tutorId], references: [accountId])
+  studentId       String
+  student         Account       @relation("StudentBookings", fields: [studentId], references: [id])
+  scheduledAtUtc  DateTime
+  durationMinutes Int           @default(45)
+  status          BookingStatus @default(BOOKED)
+  meetingUrl      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  lessonSession LessonSession?
+
+  @@unique([tutorId, scheduledAtUtc])
+  @@index([studentId, scheduledAtUtc])
+  @@map("bookings")
+}
+
+model LessonSession {
+  id         String    @id @default(uuid())
+  bookingId  String    @unique
+  booking    Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  startedAt  DateTime?
+  endedAt    DateTime?
+  tutorNotes String?
+  createdAt  DateTime  @default(now())
+
+  @@map("lesson_sessions")
+}
+
+model ProgressEntry {
+  id               String   @id @default(uuid())
+  studentId        String
+  student          Account  @relation("ProgressOfStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  recordedById     String
+  recordedBy       Account  @relation("ProgressRecordedBy", fields: [recordedById], references: [id])
+  recordedAt       DateTime @default(now())
+  currentBook      String
+  currentChapter   String
+  currentVerse     Int?     @default(0)
+  tajweedScore     Int?
+  hifzPercent      Decimal? @db.Decimal(5, 2)
+  notes            String?
+
+  @@index([studentId, recordedAt])
+  @@map("progress_entries")
+}
+
+model Curriculum {
+  id          String            @id @default(uuid())
+  academyId   String
+  academy     Academy           @relation(fields: [academyId], references: [id], onDelete: Cascade)
+  title       String
+  program     String
+  level       String
+  status      CurriculumStatus  @default(DRAFT)
+  createdById String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  revisions ContentRevision[]
+
+  @@map("curricula")
+}
+
+model ContentRevision {
+  id            String     @id @default(uuid())
+  curriculumId  String
+  curriculum    Curriculum @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
+  version       Int
+  payload       Json
+  submittedById String
+  reviewedById  String?
+  reviewNote    String?
+  createdAt     DateTime   @default(now())
+
+  @@unique([curriculumId, version])
+  @@map("content_revisions")
+}
+
+// Append-only. Never updated or deleted by application code.
+model AuditEvent {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actor      Account? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  academyId  String?
+  academy    Academy? @relation(fields: [academyId], references: [id], onDelete: SetNull)
+  action     String
+  targetType String
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([academyId, createdAt])
+  @@map("audit_events")
+}
