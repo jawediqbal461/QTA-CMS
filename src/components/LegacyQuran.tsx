@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useLocation, useParams } from "react-router-dom";
 import {
-  BookOpen, Search, Volume2, Eye, EyeOff, ChevronLeft, ChevronRight, Minus, Plus,
+  BookOpen, Search, Volume2, Eye, EyeOff, ChevronLeft, ChevronRight, Minus, Plus, List, X,
 } from "lucide-react";
 import index from "../data/quran-legacy/index.json";
 import { useSEO } from "../hooks/useSEO";
@@ -31,6 +31,60 @@ const versePages = import.meta.glob<{ default: SurahVerses }>(
 );
 
 const FONT_STEPS = [22, 26, 30, 34, 38];
+
+// Shared quick-jump Surah list, used as a sticky sidebar on desktop and
+// inside a collapsible panel on mobile so a reader never has to go back
+// to /quran/ just to switch Surah.
+function SurahListNav({ activeSlug }: { activeSlug: string }) {
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return index;
+    return index.filter((s) => s.title.toLowerCase().includes(q) || String(s.number).includes(q));
+  }, [query]);
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="relative mb-3 shrink-0">
+        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search Surah…"
+          className="w-full bg-neutral-950 border border-neutral-800 focus:border-emerald-500/50 rounded-lg py-2 pl-8 pr-3 text-xs text-white placeholder-neutral-600 outline-none transition"
+        />
+      </div>
+      <ol className="space-y-1 overflow-y-auto pr-1 flex-1">
+        {filtered.map(({ slug, title, number }) => {
+          const [english, arabic] = title.split(" - ");
+          const isActive = slug === activeSlug;
+          return (
+            <li key={slug}>
+              <Link
+                to={`/quran/${slug}/`}
+                className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs transition ${
+                  isActive
+                    ? "bg-emerald-500/10 border border-emerald-500/30 text-white"
+                    : "border border-transparent hover:bg-neutral-800/60 text-neutral-400 hover:text-white"
+                }`}
+              >
+                <span className={`shrink-0 w-6 text-center font-bold ${isActive ? "text-emerald-400" : "text-neutral-600"}`}>
+                  {number}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{english}</span>
+                <span className="font-arabic text-neutral-500 shrink-0" dir="rtl" lang="ar">{arabic}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ol>
+      {filtered.length === 0 && (
+        <p className="text-center text-xs text-neutral-500 py-6">No Surah matches “{query}”.</p>
+      )}
+    </div>
+  );
+}
 
 function SurahIndexPage() {
   const [query, setQuery] = useState("");
@@ -101,6 +155,7 @@ function SurahDetailPage({ surah }: { surah: { slug: string; title: string; numb
   const [intro, setIntro] = useState<{ introHtml: string; audioUrl?: string }>();
   const [showTranslation, setShowTranslation] = useState(true);
   const [fontStep, setFontStep] = useState(2);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const [englishTitle] = surah.title.split(" - ");
 
@@ -112,6 +167,7 @@ function SurahDetailPage({ surah }: { surah: { slug: string; title: string; numb
   useEffect(() => {
     setVerses(undefined);
     setIntro(undefined);
+    setMobileNavOpen(false);
     let active = true;
 
     versePages[`../data/quran-verses/${surah.slug}.json`]().then(
@@ -130,11 +186,32 @@ function SurahDetailPage({ surah }: { surah: { slug: string; title: string; numb
   const next = index.find((s) => s.number === surah.number + 1);
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:py-10">
-      <Link to="/quran/" className="inline-flex items-center space-x-1 text-xs text-emerald-400 hover:text-emerald-300 mb-6">
-        <ChevronLeft size={14} />
-        <span>Quran Index</span>
-      </Link>
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:py-10 lg:grid lg:grid-cols-[280px_1fr] lg:gap-8 lg:items-start">
+      {/* Desktop sidebar: full Surah index, always visible and sticky */}
+      <aside className="hidden lg:block sticky top-6 h-[calc(100vh-3rem)] rounded-3xl border border-neutral-800 bg-neutral-900 p-4">
+        <SurahListNav activeSlug={surah.slug} />
+      </aside>
+
+      <div className="min-w-0">
+      <div className="flex items-center justify-between mb-6">
+        <Link to="/quran/" className="inline-flex items-center space-x-1 text-xs text-emerald-400 hover:text-emerald-300">
+          <ChevronLeft size={14} />
+          <span>Quran Index</span>
+        </Link>
+        <button
+          onClick={() => setMobileNavOpen((v) => !v)}
+          className="lg:hidden inline-flex items-center space-x-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-300"
+        >
+          {mobileNavOpen ? <X size={13} /> : <List size={13} />}
+          <span>Browse Surahs</span>
+        </button>
+      </div>
+
+      {mobileNavOpen && (
+        <div className="lg:hidden mb-6 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 max-h-96 overflow-hidden">
+          <SurahListNav activeSlug={surah.slug} />
+        </div>
+      )}
 
       <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-6 sm:p-8 text-center space-y-3">
         <span className="inline-block text-xs font-bold text-emerald-400">Surah {surah.number}</span>
@@ -243,6 +320,7 @@ function SurahDetailPage({ surah }: { surah: { slug: string; title: string; numb
       <p className="mt-6 text-center text-[11px] text-neutral-600">
         Arabic text: Uthmani script · Translation: Saheeh International
       </p>
+      </div>
     </div>
   );
 }

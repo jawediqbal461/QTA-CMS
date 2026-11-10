@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useLocation } from "react-router-dom";
-import { Sparkles, Search, Calendar, ArrowRight, ArrowLeft, FileText } from "lucide-react";
+import { Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
+import { Sparkles, Search, Calendar, ArrowRight, ArrowLeft, FileText, Layers, Clock } from "lucide-react";
 import posts from "../data/blog-legacy/index.json";
 import { useSEO } from "../hooks/useSEO";
 
@@ -18,7 +18,9 @@ function formatDate(iso: string) {
 }
 
 function BlogIndexPage() {
-  const [category, setCategory] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const category = searchParams.get("category") || "";
+  const setCategory = (name: string) => setSearchParams(name ? { category: name } : {});
   const [query, setQuery] = useState("");
 
   useSEO({
@@ -131,6 +133,59 @@ function BlogIndexPage() {
   );
 }
 
+const categoryCounts = categories.map((name) => ({
+  name,
+  count: posts.filter((p) => p.categories.includes(name)).length,
+}));
+
+// Sticky sidebar used on individual article pages — categories and recent
+// posts, so a reader can keep browsing without going back to the index.
+function BlogSidebar({ currentSlug }: { currentSlug?: string }) {
+  const recent = posts.filter((p) => p.slug !== currentSlug).slice(0, 5);
+  return (
+    <aside className="space-y-6">
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
+        <h2 className="flex items-center space-x-1.5 text-xs font-bold text-white mb-3">
+          <Layers size={13} className="text-emerald-400" />
+          <span>Categories</span>
+        </h2>
+        <ul className="space-y-1">
+          {categoryCounts.map(({ name, count }) => (
+            <li key={name}>
+              <Link
+                to={`/blog/?category=${encodeURIComponent(name)}`}
+                className="flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800/60 hover:text-white transition"
+              >
+                <span>{name}</span>
+                <span className="text-neutral-600">{count}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
+        <h2 className="flex items-center space-x-1.5 text-xs font-bold text-white mb-3">
+          <Clock size={13} className="text-emerald-400" />
+          <span>Recent Articles</span>
+        </h2>
+        <ul className="space-y-3">
+          {recent.map((entry) => (
+            <li key={entry.path}>
+              <Link to={entry.path} className="block group">
+                <p className="text-xs font-bold text-neutral-300 group-hover:text-white line-clamp-2 leading-snug" dir="auto">
+                  {entry.title}
+                </p>
+                <p className="mt-0.5 text-[10px] text-neutral-600">{formatDate(entry.publishedAt)}</p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </aside>
+  );
+}
+
 function BlogPostLayout({ post }: { post: (typeof posts)[number] }) {
   const [article, setArticle] = useState<{ slug: string; html?: string }>();
 
@@ -156,7 +211,8 @@ function BlogPostLayout({ post }: { post: (typeof posts)[number] }) {
     .slice(0, 3);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-10 space-y-6 text-neutral-200">
+    <div className="max-w-6xl mx-auto px-4 py-10 lg:grid lg:grid-cols-[1fr_280px] lg:gap-8 lg:items-start">
+      <div className="min-w-0 space-y-6 text-neutral-200">
       <Link to="/blog/" className="inline-flex items-center space-x-1 text-xs text-emerald-400 hover:text-emerald-300">
         <ArrowLeft size={14} />
         <span>Academy Insights</span>
@@ -207,6 +263,11 @@ function BlogPostLayout({ post }: { post: (typeof posts)[number] }) {
           </div>
         </div>
       )}
+      </div>
+
+      <div className="mt-8 lg:mt-0 lg:sticky lg:top-6">
+        <BlogSidebar currentSlug={post.slug} />
+      </div>
     </div>
   );
 }
