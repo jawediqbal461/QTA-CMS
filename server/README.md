@@ -103,23 +103,25 @@ curl -X POST http://127.0.0.1:4000/api/auth/bootstrap-academy \
   }'
 ```
 
-### 7. Expose it publicly via a dedicated subdomain
+### 7. Expose it publicly under `/api/` on the existing domain
 
-This API is intentionally **not** merged into `new.qurantutorsacademy.com`'s
-static docroot — it's reached at its own subdomain so the static site's
-`.htaccess` SPA routing and this API's reverse proxy never conflict.
+No new subdomain, DNS record, or SSL cert needed. The API is reached at
+`https://new.qurantutorsacademy.com/api/...` — same origin as the frontend,
+so no CORS is even required in practice (the `CORS_ORIGIN` setting is kept
+as a harmless safety net).
 
-1. Create a DNS A record for `api.new.qurantutorsacademy.com` pointing at
-   the same VPS IP (same place you created the `new` subdomain's DNS entry).
-2. In Hestia: **Web → Add Web Domain** → `api.new.qurantutorsacademy.com`.
-3. SSH in and edit that domain's Nginx config
-   (`/home/meriweb/conf/web/api.new.qurantutorsacademy.com/nginx.ssl.conf`
-   — and the non-SSL `nginx.conf` alongside it) to reverse-proxy everything
-   to the API instead of serving static files. Inside the `server { }`
-   block, replace the default `location /` with:
+1. SSH in and edit that domain's Nginx config —
+   `/home/meriweb/conf/web/new.qurantutorsacademy.com/nginx.ssl.conf` (the
+   file Hestia generated when you enabled SSL for this domain; there's
+   also a plain `nginx.conf` alongside it for port 80, which normally just
+   redirects to HTTPS and doesn't need this block). Inside the `server { }`
+   block, add this **above** the existing `location` block(s) — the `^~`
+   modifier makes Nginx match it ahead of any regex/static-file rule
+   already in the template, so it can't be shadowed by anything else in
+   the file:
 
    ```nginx
-   location / {
+   location ^~ /api/ {
        proxy_pass http://127.0.0.1:4000;
        proxy_http_version 1.1;
        proxy_set_header Host $host;
@@ -129,14 +131,12 @@ static docroot — it's reached at its own subdomain so the static site's
    }
    ```
 
-   Then reload Nginx: `nginx -t && systemctl reload nginx`.
+   Then test and reload: `nginx -t && systemctl reload nginx`.
 
    Note: if you later use Hestia's panel to change a setting on this domain
    and it offers to "rebuild" the web domain, it may regenerate this file
    from the default template and wipe the custom block — re-add it if so.
-4. Enable SSL the same way as before: Hestia → that domain → Edit → SSL tab
-   → Let's Encrypt.
-5. Verify: `curl https://api.new.qurantutorsacademy.com/health` should
+2. Verify: `curl https://new.qurantutorsacademy.com/api/health` should
    return `{"status":"ok","db":"connected"}`.
 
 ### Redeploying after future changes
