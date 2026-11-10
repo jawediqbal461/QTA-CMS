@@ -57,6 +57,11 @@ enum RequestStatus {
   CANCELLED
 }
 
+enum ResourceAccessLevel {
+  PUBLIC
+  ENROLLED
+}
+
 model Academy {
   id          String               @id @default(uuid())
   name        String
@@ -94,6 +99,7 @@ model Account {
   guardianRequests LearningRequest[] @relation("GuardianRequests")
   studentRequests  LearningRequest[] @relation("StudentRequests")
   adminAssignments LearningRequest[] @relation("AdminAssignments")
+  createdResources Resource[]        @relation("ResourceCreatedBy")
 
   @@map("accounts")
 }
@@ -286,6 +292,27 @@ model AuditEvent {
 
   @@index([academyId, createdAt])
   @@map("audit_events")
+}
+
+model Resource {
+  id          String              @id @default(uuid())
+  title       String
+  description String?
+  program     String
+  level       String
+  language    String
+  format      String
+  url         String
+  accessLevel ResourceAccessLevel @default(PUBLIC)
+  published   Boolean             @default(false)
+  authorName  String?
+  createdById String?
+  createdBy   Account?            @relation("ResourceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([program, level, language, published])
+  @@map("resources")
 }
 
 model LearningRequest {

@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-
 import {
   BookOpen, Users, Calendar, Shield, Play, RotateCcw, Sparkles,
   Layers, ExternalLink, HelpCircle, CheckCircle, Flame, Star,
-  LogIn, ChevronDown, GraduationCap, Menu, X, Book, FileText, UserPlus,
+  LogIn, ChevronDown, GraduationCap, Menu, X, Book, FileText, UserPlus, Library,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -23,6 +23,7 @@ const Classroom = lazy(() => import("./components/Classroom"));
 const AdminCMS = lazy(() => import("./components/AdminCMS"));
 const AdminLogin = lazy(() => import("./components/AdminLogin"));
 const LegacyQuran = lazy(() => import("./components/LegacyQuran"));
+const ResourcesPage = lazy(() => import("./components/ResourcesPage"));
 const BlogsPage = lazy(() => import("./components/BlogsPage"));
 const LegacyBlog = lazy(() => import("./components/LegacyBlog"));
 const BlogPostPage = lazy(() => import("./components/BlogPostPage"));
@@ -397,6 +398,18 @@ export default function App() {
               <span>Blogs</span>
             </button>
 
+            <button
+              onClick={() => navigate("/resources")}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                isPathPrefix("/resources")
+                  ? "bg-neutral-800/85 text-white shadow-inner border border-neutral-700/50"
+                  : "text-neutral-400 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <Library size={14} className={isPathPrefix("/resources") ? "text-emerald-400" : "text-neutral-400"} />
+              <span>Resources</span>
+            </button>
+
             <div className="relative py-1"
               onBlur={(event) => {
                 if (!event.currentTarget.contains(event.relatedTarget)) setDeskMenuOpen(false);
@@ -658,6 +671,18 @@ export default function App() {
                 >
                   <FileText size={16} />
                   <span>Blogs</span>
+                </button>
+
+                <button
+                  onClick={() => { navigate("/resources"); setIsMobileMenuOpen(false); }}
+                  className={`p-3 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1.5 border ${
+                    isPathPrefix("/resources")
+                      ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/30"
+                      : "bg-neutral-900 text-neutral-400 border-transparent hover:text-white hover:bg-neutral-850"
+                  }`}
+                >
+                  <Library size={16} />
+                  <span>Resources</span>
                 </button>
 
                 <button
@@ -931,6 +956,8 @@ export default function App() {
                 />
               )
             } />
+
+            <Route path="/resources" element={<ResourcesPage />} />
 
             <Route path="/quran" element={<LegacyQuran />} />
             <Route path="/quran/:surahSlug" element={<LegacyQuran />} />

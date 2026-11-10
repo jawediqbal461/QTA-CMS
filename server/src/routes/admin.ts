@@ -238,6 +238,57 @@ adminRouter.get("/requests", asyncHandler(async (req, res) => {
 
 const assignSchema = z.object({ tutorId: z.uuid().nullable() });
 
+// Resources — M08
+
+const resourceSchema = z.object({
+  title:       z.string().trim().min(2).max(200),
+  description: z.string().trim().max(1000).optional(),
+  program:     z.string().trim().min(1).max(80),
+  level:       z.string().trim().min(1).max(80),
+  language:    z.string().trim().min(1).max(60),
+  format:      z.string().trim().min(1).max(60),
+  url:         z.url({ protocol: /^https?$/ }).max(2000),
+  accessLevel: z.enum(["PUBLIC", "ENROLLED"]).default("PUBLIC"),
+  published:   z.boolean().default(false),
+  authorName:  z.string().trim().max(120).optional(),
+});
+
+adminRouter.get("/resources", asyncHandler(async (req, res) => {
+  const { program, level, language, format } = req.query;
+  res.json(await prisma.resource.findMany({
+    where: {
+      ...(program  ? { program:  String(program) }  : {}),
+      ...(level    ? { level:    String(level) }    : {}),
+      ...(language ? { language: String(language) } : {}),
+      ...(format   ? { format:   String(format) }   : {}),
+    },
+    orderBy: [{ published: "desc" }, { program: "asc" }, { title: "asc" }],
+    select: { id: true, title: true, description: true, program: true, level: true, language: true, format: true, url: true, accessLevel: true, published: true, authorName: true, createdAt: true, updatedAt: true },
+  }));
+}));
+
+adminRouter.post("/resources", asyncHandler(async (req, res) => {
+  const parsed = resourceSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Check the resource fields." });
+  const { accountId } = req.session!;
+  const resource = await prisma.resource.create({ data: { ...parsed.data, createdById: accountId } });
+  res.status(201).json(resource);
+}));
+
+adminRouter.patch("/resources/:id", asyncHandler(async (req, res) => {
+  const parsed = resourceSchema.partial().safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Check the resource fields." });
+  const resource = await prisma.resource.updateMany({ where: { id: req.params.id }, data: parsed.data });
+  if (!resource.count) return res.status(404).json({ error: "Resource not found." });
+  res.json({ saved: true });
+}));
+
+adminRouter.delete("/resources/:id", asyncHandler(async (req, res) => {
+  const deleted = await prisma.resource.deleteMany({ where: { id: req.params.id } });
+  if (!deleted.count) return res.status(404).json({ error: "Resource not found." });
+  res.json({ deleted: true });
+}));
+
 adminRouter.patch("/requests/:id/assign", asyncHandler(async (req, res) => {
   const parsed = assignSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Provide a valid tutor ID or null to unassign." });

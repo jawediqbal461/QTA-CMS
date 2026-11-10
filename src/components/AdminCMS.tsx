@@ -10,9 +10,10 @@ import { Curriculum, Tutor, ARCHITECTURE_INFO, Surah, Juz, BlogPost, INITIAL_SUR
 import Breadcrumbs from "./Breadcrumbs";
 import { useSEO } from "../hooks/useSEO";
 import { AccountsPanel, TutorsPanel, TutorProfilesPanel, OperationsPanel, RequestsPanel } from "./Marketplace";
+import { ResourcesAdminPanel } from "./ResourcesPage";
 
 type AdminSubTab = "overview" | "architecture" | "sitemap" | "database" | "curriculum" | "profiles" | "quran_crud" | "blog_crud"
-  | "accounts" | "tutor_applications" | "tutor_profiles" | "requests" | "lesson_recovery";
+  | "accounts" | "tutor_applications" | "tutor_profiles" | "requests" | "resources" | "lesson_recovery";
 
 interface AdminCMSProps {
   curriculums: Curriculum[];
@@ -794,6 +795,8 @@ export default function AdminCMS({
         ? "Tutor Profile Management"
         : activeSubTab === "requests"
         ? "Learning Request Matching"
+        : activeSubTab === "resources"
+        ? "Resource Catalog"
         : "Lesson Recovery & Audit Log"
     }
   ];
@@ -888,6 +891,17 @@ export default function AdminCMS({
               >
                 <Inbox size={13} />
                 <span>Learning Requests</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab("resources")}
+                className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl transition duration-300 flex items-center space-x-2.5 ${
+                  activeSubTab === "resources"
+                    ? "bg-sky-500 text-neutral-950 shadow-lg shadow-sky-500/10 font-extrabold"
+                    : "bg-neutral-950/80 text-neutral-400 hover:text-white border border-neutral-850 hover:bg-neutral-900"
+                }`}
+              >
+                <BookOpen size={13} />
+                <span>Resource Catalog</span>
               </button>
               <button
                 onClick={() => setActiveSubTab("lesson_recovery")}
@@ -3272,6 +3286,13 @@ export default function AdminCMS({
         {activeSubTab === "requests" && (
           <div className="animate-fade-in">
             <RequestsPanel token={token} />
+          </div>
+        )}
+
+        {/* SUB-TAB: RESOURCE CATALOG (live data) */}
+        {activeSubTab === "resources" && (
+          <div className="animate-fade-in">
+            <ResourcesAdminPanel token={token} />
           </div>
         )}
 

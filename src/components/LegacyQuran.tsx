@@ -32,6 +32,11 @@ const versePages = import.meta.glob<{ default: SurahVerses }>(
 
 const FONT_STEPS = [22, 26, 30, 34, 38];
 
+const ARABIC_FONTS: { key: "naskh" | "amiri"; label: string; stack: string }[] = [
+  { key: "naskh", label: "Naskh",    stack: '"Noto Naskh Arabic", "Traditional Arabic", serif' },
+  { key: "amiri", label: "Amiri",    stack: '"Amiri", "Traditional Arabic", serif' },
+];
+
 // Shared quick-jump Surah list, used as a sticky sidebar on desktop and
 // inside a collapsible panel on mobile so a reader never has to go back
 // to /quran/ just to switch Surah.
@@ -153,9 +158,26 @@ function SurahIndexPage() {
 function SurahDetailPage({ surah }: { surah: { slug: string; title: string; number: number } }) {
   const [verses, setVerses] = useState<SurahVerses | "error">();
   const [intro, setIntro] = useState<{ introHtml: string; audioUrl?: string }>();
-  const [showTranslation, setShowTranslation] = useState(true);
-  const [fontStep, setFontStep] = useState(2);
+  const [showTranslation, setShowTranslation] = useState(() => {
+    try { const v = localStorage.getItem("qta_quran_translation"); return v === null ? true : v === "1"; } catch { return true; }
+  });
+  const [fontStep, setFontStep] = useState(() => {
+    try { const v = Number(localStorage.getItem("qta_quran_fontStep")); return isNaN(v) || v < 0 || v >= FONT_STEPS.length ? 2 : v; } catch { return 2; }
+  });
+  const [fontFamily, setFontFamily] = useState<"naskh" | "amiri">(() => {
+    try { return localStorage.getItem("qta_quran_fontFamily") === "amiri" ? "amiri" : "naskh"; } catch { return "naskh"; }
+  });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    try { localStorage.setItem("qta_quran_fontStep", String(fontStep)); } catch { /* ignore */ }
+  }, [fontStep]);
+  useEffect(() => {
+    try { localStorage.setItem("qta_quran_translation", showTranslation ? "1" : "0"); } catch { /* ignore */ }
+  }, [showTranslation]);
+  useEffect(() => {
+    try { localStorage.setItem("qta_quran_fontFamily", fontFamily); } catch { /* ignore */ }
+  }, [fontFamily]);
 
   const [englishTitle] = surah.title.split(" - ");
 
@@ -239,7 +261,7 @@ function SurahDetailPage({ surah }: { surah: { slug: string; title: string; numb
           </Link>
         ) : <span />}
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-center">
           <button
             onClick={() => setFontStep((s) => Math.max(0, s - 1))}
             aria-label="Decrease Arabic text size"
@@ -254,6 +276,19 @@ function SurahDetailPage({ surah }: { surah: { slug: string; title: string; numb
           >
             <Plus size={13} />
           </button>
+          <div className="flex rounded-lg border border-neutral-800 overflow-hidden">
+            {ARABIC_FONTS.map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setFontFamily(f.key)}
+                aria-label={`Use ${f.label} font`}
+                className={`px-2.5 py-1 text-[11px] font-bold transition ${fontFamily === f.key ? "bg-emerald-600 text-neutral-950" : "bg-neutral-900 text-neutral-400 hover:text-white"}`}
+                style={{ fontFamily: f.stack }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
           <button
             onClick={() => setShowTranslation((v) => !v)}
             className="flex items-center space-x-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-300 hover:text-white"
@@ -295,7 +330,7 @@ function SurahDetailPage({ surah }: { surah: { slug: string; title: string; numb
                   dir="rtl"
                   lang="ar"
                   className="quran-ayah-arabic flex-1 text-right text-white"
-                  style={{ fontSize: FONT_STEPS[fontStep] }}
+                  style={{ fontSize: FONT_STEPS[fontStep], fontFamily: ARABIC_FONTS.find((f) => f.key === fontFamily)?.stack }}
                 >
                   {ayah.arabic}
                 </p>
