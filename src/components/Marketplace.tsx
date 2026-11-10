@@ -502,7 +502,7 @@ function AccountForm({ role, register, onSession }: { role: Role; register: bool
   </form>;
 }
 
-type DeskTab = "overview" | "lessons" | "assignments" | "requests" | "profile" | "notifications" | "courses";
+type DeskTab = "overview" | "lessons" | "assignments" | "requests" | "profile" | "notifications" | "courses" | "payments" | "progress";
 
 function DeskSidebar({ role, fullName, email, activeTab, setActiveTab, unread, signOut }: {
   role: Role; fullName: string; email: string; activeTab: DeskTab; setActiveTab: (tab: DeskTab) => void;
@@ -514,6 +514,8 @@ function DeskSidebar({ role, fullName, email, activeTab, setActiveTab, unread, s
     ...(role === "TUTOR" ? [{ id: "assignments" as DeskTab, label: "Assignments", icon: Inbox }] : []),
     ...(role === "TUTOR" ? [{ id: "courses" as DeskTab, label: "My Courses", icon: GraduationCap }] : []),
     ...(role === "GUARDIAN" ? [{ id: "requests" as DeskTab, label: "Tutor Requests", icon: Inbox }] : []),
+    ...(role === "GUARDIAN" ? [{ id: "payments" as DeskTab, label: "Payment History", icon: Wallet }] : []),
+    ...(role === "GUARDIAN" ? [{ id: "progress" as DeskTab, label: "Progress Reports", icon: Award }] : []),
     { id: "profile", label: "My profile", icon: Users },
     { id: "notifications", label: "Notifications", icon: Bell, count: unread },
   ];
@@ -673,6 +675,16 @@ export function AccountPortal({ role, register = false, login = false }: { role:
           {role === "GUARDIAN" && (
             <div className={activeTab === "requests" ? "" : "hidden"}>
               <GuardianRequests token={token} />
+            </div>
+          )}
+          {role === "GUARDIAN" && (
+            <div className={activeTab === "payments" ? "" : "hidden"}>
+              <GuardianPayments token={token} />
+            </div>
+          )}
+          {role === "GUARDIAN" && (
+            <div className={activeTab === "progress" ? "" : "hidden"}>
+              <GuardianProgress token={token} />
             </div>
           )}
         </div>
@@ -1292,6 +1304,112 @@ function GuardianRequests({ token }: { token: string }) {
         </article>
       ))}
     </section>
+  </div>;
+}
+
+// M11 — guardian payment history
+type GuardianPayment = {
+  id: string; amount: string; currency: string; method: string;
+  reference: string | null; notes: string | null;
+  status: "PENDING" | "CONFIRMED" | "REFUNDED";
+  confirmedAt: string | null; createdAt: string;
+  booking: { scheduledAtUtc: string; student: { fullName: string } } | null;
+};
+
+const payStatusColor: Record<string, string> = {
+  PENDING: "border-amber-500/25 text-amber-400",
+  CONFIRMED: "border-emerald-500/25 text-emerald-400",
+  REFUNDED: "border-sky-500/25 text-sky-400",
+};
+
+function GuardianPayments({ token }: { token: string }) {
+  const result = useResource<GuardianPayment[]>("/guardian/payments", token, 0);
+  return <div className="space-y-4">
+    <section className={panel}>
+      <h2 className="flex items-center gap-2 text-sm font-bold text-white">
+        <Wallet size={15} className="text-emerald-400" />
+        <span>Payment history</span>
+      </h2>
+      <p className="text-xs text-neutral-400">All payments recorded for your account by the academy team.</p>
+      {!result && <p role="status" className="text-sm text-neutral-500">Loading…</p>}
+      <ErrorText value={result?.error} />
+      {result?.data?.length === 0 && <p className="text-sm text-neutral-400">No payments recorded yet.</p>}
+      {result?.data?.map((p) => (
+        <article key={p.id} className="border-t border-neutral-800 pt-3 space-y-1">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-bold text-white">{p.currency} {p.amount} · {p.method}</p>
+              {p.booking && <p className="text-xs text-neutral-400">
+                {p.booking.student.fullName} · {localTime(p.booking.scheduledAtUtc)}
+              </p>}
+              <p className="text-[11px] text-neutral-500">{localTime(p.createdAt)}</p>
+            </div>
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${payStatusColor[p.status] ?? ""}`}>{p.status}</span>
+          </div>
+          {p.reference && <p className="text-xs text-neutral-500">Ref: {p.reference}</p>}
+          {p.notes && <p className="text-xs text-neutral-500 italic">{p.notes}</p>}
+          {p.confirmedAt && <p className="text-[11px] text-emerald-500">Confirmed {localTime(p.confirmedAt)}</p>}
+        </article>
+      ))}
+    </section>
+  </div>;
+}
+
+// M11 — guardian progress reports
+type ProgressReport = {
+  id: string; recordedAt: string; currentBook: string; currentChapter: string;
+  currentVerse: number | null; tajweedScore: number | null; hifzPercent: string | null;
+  notes: string | null;
+  recordedBy: { fullName: string };
+  booking: { scheduledAtUtc: string } | null;
+};
+
+function GuardianProgress({ token }: { token: string }) {
+  const [selectedStudent, setSelectedStudent] = useState("");
+  const studentsResult = useResource<Student[]>("/guardian/students", token, 0);
+  const progressResult = useResource<ProgressReport[]>(
+    selectedStudent ? `/guardian/students/${selectedStudent}/progress` : null,
+    token, 0,
+  );
+  return <div className="space-y-4">
+    <section className={panel}>
+      <h2 className="flex items-center gap-2 text-sm font-bold text-white">
+        <Award size={15} className="text-sky-400" />
+        <span>Progress reports</span>
+      </h2>
+      <label className="block text-xs font-bold text-neutral-300">
+        Select a learner
+        <select className={`${input} mt-1`} value={selectedStudent} onChange={(e) => setSelectedStudent(e.target.value)}>
+          <option value="">Choose a learner</option>
+          {studentsResult?.data?.map((s) => <option key={s.id} value={s.id}>{s.fullName}</option>)}
+        </select>
+      </label>
+      {studentsResult?.data?.length === 0 && <p className="text-sm text-neutral-400">No learners added yet.</p>}
+    </section>
+    {selectedStudent && <section className={panel}>
+      <h3 className="text-sm font-bold text-white">Last 50 entries</h3>
+      {!progressResult && <p role="status" className="text-sm text-neutral-500">Loading…</p>}
+      <ErrorText value={progressResult?.error} />
+      {progressResult?.data?.length === 0 && <p className="text-sm text-neutral-400">No progress recorded yet.</p>}
+      {progressResult?.data?.map((entry) => (
+        <article key={entry.id} className="border-t border-neutral-800 pt-3 space-y-1">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-bold text-white">{entry.currentBook} · Ch {entry.currentChapter}{entry.currentVerse != null ? `:${entry.currentVerse}` : ""}</p>
+              <p className="text-xs text-neutral-400">
+                {entry.booking ? localTime(entry.booking.scheduledAtUtc) : localTime(entry.recordedAt)}
+                {" · "}{entry.recordedBy.fullName}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {entry.tajweedScore != null && <span className={badge}>Tajweed {entry.tajweedScore}%</span>}
+              {entry.hifzPercent != null && <span className={badge}>Hifz {entry.hifzPercent}%</span>}
+            </div>
+          </div>
+          {entry.notes && <p className="text-xs text-neutral-500 italic">{entry.notes}</p>}
+        </article>
+      ))}
+    </section>}
   </div>;
 }
 

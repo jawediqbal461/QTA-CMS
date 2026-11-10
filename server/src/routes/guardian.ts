@@ -258,3 +258,40 @@ guardianRouter.patch("/requests/:id/cancel", requireRole("GUARDIAN"), asyncHandl
   if (!updated.count) return res.status(404).json({ error: "Active request not found." });
   res.json({ status: "CANCELLED" });
 }));
+
+// Payment history — M11
+guardianRouter.get("/payments", asyncHandler(async (req, res) => {
+  const { accountId, academyId } = req.session!;
+  const payments = await prisma.pilotPayment.findMany({
+    where: { payerId: accountId, academyId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true, amount: true, currency: true, method: true, reference: true,
+      notes: true, status: true, confirmedAt: true, createdAt: true,
+      booking: { select: { scheduledAtUtc: true, student: { select: { fullName: true } } } },
+    },
+  });
+  res.json(payments);
+}));
+
+// Student progress history — M11
+guardianRouter.get("/students/:studentId/progress", requireRole("GUARDIAN"), asyncHandler(async (req, res) => {
+  const { accountId, academyId } = req.session!;
+  // Verify this guardian is linked to the student
+  const link = await prisma.guardianStudentLink.findFirst({
+    where: { guardianId: accountId, studentId: req.params.studentId },
+  });
+  if (!link) return res.status(403).json({ error: "Not linked to this student." });
+  const entries = await prisma.progressEntry.findMany({
+    where: { studentId: req.params.studentId, booking: { academyId } },
+    orderBy: { recordedAt: "desc" },
+    take: 50,
+    select: {
+      id: true, recordedAt: true, currentBook: true, currentChapter: true,
+      currentVerse: true, tajweedScore: true, hifzPercent: true, notes: true,
+      recordedBy: { select: { fullName: true } },
+      booking: { select: { scheduledAtUtc: true } },
+    },
+  });
+  res.json(entries);
+}));
