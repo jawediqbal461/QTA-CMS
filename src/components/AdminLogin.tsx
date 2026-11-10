@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import {
-  Mail, Lock, Eye, EyeOff, ShieldAlert, ArrowLeft, KeyRound,
-  Sparkles, ShieldCheck, HelpCircle, AlertCircle
+  Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound,
+  ShieldCheck, HelpCircle, AlertCircle
 } from "lucide-react";
 import { useSEO } from "../hooks/useSEO";
+import { ApiError, ADMIN_TOKEN_KEY, loginAdmin } from "../lib/api";
 
 interface AdminLoginProps {
   onLoginSuccess: () => void;
@@ -21,46 +22,39 @@ export default function AdminLogin({ onLoginSuccess, onBackToHome }: AdminLoginP
   const [success, setSuccess] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
-  const demoEmail = "admin@qurantutorsacademy.com";
-  const demoPassword = "admin-secure-pass";
-
-  const handleQuickFill = () => {
-    setEmail(demoEmail);
-    setPassword(demoPassword);
-    setError(null);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    // Basic Validation
     if (!email.trim() || !password.trim()) {
       setError("Please fill in all security fields.");
       return;
     }
 
     setIsLoading(true);
-
-    // Simulate authenticating against the local database schema secure system
-    setTimeout(() => {
+    try {
+      const { token } = await loginAdmin(email.trim(), password);
       setIsLoading(false);
-      if (email.toLowerCase() === demoEmail && password === demoPassword) {
-        setSuccess(true);
-        if (rememberMe) {
-          localStorage.setItem("qta_admin_auth", "true");
-        } else {
-          sessionStorage.setItem("qta_admin_auth", "true");
-        }
-        
-        // Let the beautiful success animation play for a moment before navigation
-        setTimeout(() => {
-          onLoginSuccess();
-        }, 1200);
+      setSuccess(true);
+
+      if (rememberMe) {
+        localStorage.setItem(ADMIN_TOKEN_KEY, token);
       } else {
-        setError("Invalid administrator email or passphrase. Check credentials below.");
+        sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
       }
-    }, 1500);
+
+      // Let the success animation play for a moment before navigation
+      setTimeout(() => {
+        onLoginSuccess();
+      }, 1200);
+    } catch (err) {
+      setIsLoading(false);
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Invalid administrator email or passphrase.");
+      } else {
+        setError("Could not reach the admin service. Please try again.");
+      }
+    }
   };
 
   return (
@@ -83,8 +77,8 @@ export default function AdminLogin({ onLoginSuccess, onBackToHome }: AdminLoginP
           </button>
 
           <div className="flex items-center space-x-1.5 bg-neutral-950 px-2.5 py-1 rounded-full border border-neutral-850">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider font-mono">Demo sandbox</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider font-mono">Secure session</span>
           </div>
         </div>
 
@@ -125,7 +119,6 @@ export default function AdminLogin({ onLoginSuccess, onBackToHome }: AdminLoginP
           <div className="space-y-1.5">
             <div className="flex justify-between items-center">
               <label className="text-xs font-bold text-neutral-300">Security Passphrase</label>
-              <span className="text-[10px] text-neutral-500">Demo credentials — not for production use</span>
             </div>
             
             <div className="relative">
@@ -206,33 +199,6 @@ export default function AdminLogin({ onLoginSuccess, onBackToHome }: AdminLoginP
             )}
           </button>
         </form>
-
-        {/* DEMO SANDBOX ASSISTANCE BOX */}
-        <div className="bg-neutral-950/80 border border-neutral-850 p-4 rounded-2xl space-y-3">
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="text-amber-500 font-extrabold flex items-center">
-              <Sparkles size={11} className="mr-1" />
-              Pilot Sandbox Credentials
-            </span>
-            <button 
-              onClick={handleQuickFill}
-              className="text-[10px] bg-amber-500/10 hover:bg-amber-500 hover:text-neutral-950 border border-amber-500/25 text-amber-500 px-2 py-1 rounded-lg font-bold transition"
-            >
-              Quick Autofill
-            </button>
-          </div>
-          
-          <div className="space-y-1 text-[10px] text-neutral-400 font-mono">
-            <div className="flex justify-between">
-              <span>Admin Email:</span>
-              <span className="text-white font-bold select-all">{demoEmail}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Passphrase:</span>
-              <span className="text-white font-bold select-all">{demoPassword}</span>
-            </div>
-          </div>
-        </div>
 
       </div>
     </div>

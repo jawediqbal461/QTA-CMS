@@ -14,6 +14,7 @@ import {
 } from "./data/mockData";
 import type { StudentSignUpData, TutorSignUpData } from "./components/SignUp";
 import legacyBlogIndex from "./data/blog-legacy/index.json";
+import { clearStoredAdminToken, getStoredAdminToken } from "./lib/api";
 
 // PublicHome is the landing view, so it's loaded eagerly.
 // Everything else is only needed after explicit navigation, so it's
@@ -100,13 +101,7 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isAnnouncementVisible, setIsAnnouncementVisible] = useState<boolean>(true);
 
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem("qta_admin_auth") === "true" || sessionStorage.getItem("qta_admin_auth") === "true";
-    } catch {
-      return false;
-    }
-  });
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => getStoredAdminToken() !== null);
 
   // --- INITIALIZATION FROM LOCALSTORAGE ---
   useEffect(() => {
@@ -1068,10 +1063,7 @@ export default function App() {
                   onUpdateTutorProfile={handleUpdateTutorProfile}
                   initialSubTab={adminInitialSubTab}
                   onLogout={() => {
-                    try {
-                      localStorage.removeItem("qta_admin_auth");
-                      sessionStorage.removeItem("qta_admin_auth");
-                    } catch {}
+                    clearStoredAdminToken();
                     setIsAdminAuthenticated(false);
                   }}
                   onNavigateHome={() => navigate("/")}
