@@ -4,7 +4,6 @@ import {
   BookOpen, Users, Calendar, Shield, Play, RotateCcw, Sparkles,
   Layers, ExternalLink, HelpCircle, CheckCircle, Flame, Star,
   LogIn, ChevronDown, GraduationCap, Menu, X, Book, FileText, UserPlus,
-  AlertTriangle, ArrowLeft
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -19,7 +18,7 @@ import { clearStoredAdminToken, getStoredAdminToken } from "./lib/api";
 // Everything else is only needed after explicit navigation, so it's
 // code-split into its own chunk to keep the initial bundle smaller.
 import PublicHome from "./components/PublicHome";
-import { AdminDashboard, AccountPortal, PublicTutors, VerifyEmail } from "./components/Marketplace";
+import { AccountPortal, PublicTutors, VerifyEmail } from "./components/Marketplace";
 const Classroom = lazy(() => import("./components/Classroom"));
 const AdminCMS = lazy(() => import("./components/AdminCMS"));
 const AdminLogin = lazy(() => import("./components/AdminLogin"));
@@ -278,7 +277,7 @@ export default function App() {
 
       {/* GLOBAL PERSISTENT ANNOUNCEMENT BAR */}
       <AnimatePresence>
-        {isAnnouncementVisible && isAdminAuthenticated && isPath("/admin/content") && (
+        {isAnnouncementVisible && isAdminAuthenticated && isPathPrefix("/admin") && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
@@ -827,13 +826,33 @@ export default function App() {
             <Route path="/guardian" element={React.createElement(AccountPortal, { key: "guardian", role: "GUARDIAN" })} />
             <Route path="/tutor" element={React.createElement(AccountPortal, { key: "tutor", role: "TUTOR" })} />
             <Route path="/admin/tutors" element={isAdminAuthenticated ? (
-              <AdminDashboard onLogout={() => { clearStoredAdminToken(); setIsAdminAuthenticated(false); }} />
+              <AdminCMS
+                curriculums={curriculums}
+                tutors={tutors}
+                onAddCurriculum={handleAddCurriculum}
+                onDeleteCurriculum={handleDeleteCurriculum}
+                onUpdateTutorProfile={handleUpdateTutorProfile}
+                initialSubTab="tutor_applications"
+                token={getStoredAdminToken() ?? ""}
+                onLogout={() => { clearStoredAdminToken(); setIsAdminAuthenticated(false); }}
+                onNavigateHome={() => navigate("/")}
+              />
             ) : (
               <AdminLogin onLoginSuccess={() => setIsAdminAuthenticated(true)} onBackToHome={() => navigate("/")} />
             )} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/admin/operations" element={isAdminAuthenticated ? (
-              <AdminDashboard onLogout={() => { clearStoredAdminToken(); setIsAdminAuthenticated(false); }} />
+              <AdminCMS
+                curriculums={curriculums}
+                tutors={tutors}
+                onAddCurriculum={handleAddCurriculum}
+                onDeleteCurriculum={handleDeleteCurriculum}
+                onUpdateTutorProfile={handleUpdateTutorProfile}
+                initialSubTab="lesson_recovery"
+                token={getStoredAdminToken() ?? ""}
+                onLogout={() => { clearStoredAdminToken(); setIsAdminAuthenticated(false); }}
+                onNavigateHome={() => navigate("/")}
+              />
             ) : (
               <AdminLogin onLoginSuccess={() => setIsAdminAuthenticated(true)} onBackToHome={() => navigate("/")} />
             )} />
@@ -875,42 +894,36 @@ export default function App() {
 
             {/* Admin CMS and database layout */}
             <Route path="/admin" element={isAdminAuthenticated ? (
-              <AdminDashboard onLogout={() => { clearStoredAdminToken(); setIsAdminAuthenticated(false); }} />
+              <AdminCMS
+                curriculums={curriculums}
+                tutors={tutors}
+                onAddCurriculum={handleAddCurriculum}
+                onDeleteCurriculum={handleDeleteCurriculum}
+                onUpdateTutorProfile={handleUpdateTutorProfile}
+                initialSubTab="accounts"
+                token={getStoredAdminToken() ?? ""}
+                onLogout={() => { clearStoredAdminToken(); setIsAdminAuthenticated(false); }}
+                onNavigateHome={() => navigate("/")}
+              />
             ) : (
               <AdminLogin onLoginSuccess={() => setIsAdminAuthenticated(true)} onBackToHome={() => navigate("/")} />
             )} />
             <Route path="/admin/content" element={
               isAdminAuthenticated ? (
-                <>
-                  <div className="mx-auto max-w-5xl px-4 pt-6">
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/20 bg-amber-950/40 px-4 py-3">
-                      <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
-                        <AlertTriangle size={14} className="shrink-0" />
-                        <span>Prototype tools &mdash; browser-local demo data, not the live academy records</span>
-                      </div>
-                      <button
-                        onClick={() => navigate("/admin")}
-                        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-300 transition hover:bg-amber-500/20"
-                      >
-                        <ArrowLeft size={13} />
-                        <span>Back to live account management</span>
-                      </button>
-                    </div>
-                  </div>
-                  <AdminCMS
-                    curriculums={curriculums}
-                    tutors={tutors}
-                    onAddCurriculum={handleAddCurriculum}
-                    onDeleteCurriculum={handleDeleteCurriculum}
-                    onUpdateTutorProfile={handleUpdateTutorProfile}
-                    initialSubTab={adminInitialSubTab}
-                    onLogout={() => {
-                      clearStoredAdminToken();
-                      setIsAdminAuthenticated(false);
-                    }}
-                    onNavigateHome={() => navigate("/")}
-                  />
-                </>
+                <AdminCMS
+                  curriculums={curriculums}
+                  tutors={tutors}
+                  onAddCurriculum={handleAddCurriculum}
+                  onDeleteCurriculum={handleDeleteCurriculum}
+                  onUpdateTutorProfile={handleUpdateTutorProfile}
+                  initialSubTab={adminInitialSubTab || "overview"}
+                  token={getStoredAdminToken() ?? ""}
+                  onLogout={() => {
+                    clearStoredAdminToken();
+                    setIsAdminAuthenticated(false);
+                  }}
+                  onNavigateHome={() => navigate("/")}
+                />
               ) : (
                 <AdminLogin
                   onLoginSuccess={() => setIsAdminAuthenticated(true)}

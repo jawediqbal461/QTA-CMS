@@ -1,13 +1,18 @@
 import React, { useState } from "react";
-import { 
-  Database, Cpu, Code2, Layers, BookOpen, UserPlus, Sliders, CheckCircle, 
+import {
+  Database, Cpu, Code2, Layers, BookOpen, UserPlus, Sliders, CheckCircle,
   Copy, Check, FileText, Globe, Zap, AlertCircle, Trash2, ArrowUpRight, HelpCircle,
   Search, Plus, Edit, BarChart3, TrendingUp, Activity, DollarSign, Clock, RefreshCw, Star,
-  Users, Calendar, PieChart, Lock, Sparkles, Bold, Italic, Heading, Quote, List, ListOrdered, Image
+  Users, Calendar, PieChart, Lock, Sparkles, Bold, Italic, Heading, Quote, List, ListOrdered, Image,
+  GraduationCap, ShieldCheck
 } from "lucide-react";
 import { Curriculum, Tutor, ARCHITECTURE_INFO, Surah, Juz, BlogPost, INITIAL_SURAHS, INITIAL_JUZ, INITIAL_BLOGS, REALISTIC_QURAN_VERSES, slugify } from "../data/mockData";
 import Breadcrumbs from "./Breadcrumbs";
 import { useSEO } from "../hooks/useSEO";
+import { AccountsPanel, TutorsPanel, OperationsPanel } from "./Marketplace";
+
+type AdminSubTab = "overview" | "architecture" | "sitemap" | "database" | "curriculum" | "profiles" | "quran_crud" | "blog_crud"
+  | "accounts" | "tutor_applications" | "lesson_recovery";
 
 interface AdminCMSProps {
   curriculums: Curriculum[];
@@ -17,23 +22,26 @@ interface AdminCMSProps {
   onUpdateTutorProfile: (tutorId: string, updatedTutor: Partial<Tutor>) => void;
   onLogout: () => void;
   onNavigateHome?: () => void;
-  initialSubTab?: "overview" | "architecture" | "sitemap" | "database" | "curriculum" | "profiles" | "quran_crud" | "blog_crud";
+  initialSubTab?: AdminSubTab;
+  /** Academy admin's JWT, for the live (non-demo) sections below. */
+  token: string;
 }
 
-export default function AdminCMS({ 
-  curriculums, 
-  tutors, 
-  onAddCurriculum, 
-  onDeleteCurriculum, 
-  onUpdateTutorProfile, 
+export default function AdminCMS({
+  curriculums,
+  tutors,
+  onAddCurriculum,
+  onDeleteCurriculum,
+  onUpdateTutorProfile,
   onLogout,
   onNavigateHome,
-  initialSubTab
+  initialSubTab,
+  token
 }: AdminCMSProps) {
   useSEO({ title: "Admin CMS", noindex: true });
 
-  const [activeSubTab, setActiveSubTab] = useState<"overview" | "architecture" | "sitemap" | "database" | "curriculum" | "profiles" | "quran_crud" | "blog_crud">(
-    initialSubTab || "overview"
+  const [activeSubTab, setActiveSubTab] = useState<AdminSubTab>(
+    initialSubTab || "accounts"
   );
   
   // Interactive Overview States
@@ -774,9 +782,15 @@ export default function AdminCMS({
         ? "Syllabus Content Manager" 
         : activeSubTab === "profiles" 
         ? "Instructor Profile Verifications" 
-        : activeSubTab === "quran_crud" 
-        ? "Quranic Surah Database CRUD" 
-        : "SaaS Blog Article CRUD" 
+        : activeSubTab === "quran_crud"
+        ? "Quranic Surah Database CRUD"
+        : activeSubTab === "blog_crud"
+        ? "SaaS Blog Article CRUD"
+        : activeSubTab === "accounts"
+        ? "Academy Account Management"
+        : activeSubTab === "tutor_applications"
+        ? "Tutor Application Review"
+        : "Lesson Recovery & Audit Log"
     }
   ];
 
@@ -818,6 +832,49 @@ export default function AdminCMS({
               CMS Panel Navigation
             </h2>
             <p className="text-[10px] text-neutral-500">Authorized Session</p>
+          </div>
+
+          {/* GROUP 0: ACADEMY ADMINISTRATION (live data) */}
+          <div className="space-y-2.5 pb-2 border-b border-neutral-800">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-sky-400 flex items-center">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 mr-2 animate-pulse" />
+              Academy Administration
+            </span>
+            <div className="flex flex-col gap-1.5">
+              <button
+                onClick={() => setActiveSubTab("accounts")}
+                className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl transition duration-300 flex items-center space-x-2.5 ${
+                  activeSubTab === "accounts"
+                    ? "bg-sky-500 text-neutral-950 shadow-lg shadow-sky-500/10 font-extrabold"
+                    : "bg-neutral-950/80 text-neutral-400 hover:text-white border border-neutral-850 hover:bg-neutral-900"
+                }`}
+              >
+                <Users size={13} />
+                <span>Accounts</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab("tutor_applications")}
+                className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl transition duration-300 flex items-center space-x-2.5 ${
+                  activeSubTab === "tutor_applications"
+                    ? "bg-sky-500 text-neutral-950 shadow-lg shadow-sky-500/10 font-extrabold"
+                    : "bg-neutral-950/80 text-neutral-400 hover:text-white border border-neutral-850 hover:bg-neutral-900"
+                }`}
+              >
+                <GraduationCap size={13} />
+                <span>Tutor Applications</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab("lesson_recovery")}
+                className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl transition duration-300 flex items-center space-x-2.5 ${
+                  activeSubTab === "lesson_recovery"
+                    ? "bg-sky-500 text-neutral-950 shadow-lg shadow-sky-500/10 font-extrabold"
+                    : "bg-neutral-950/80 text-neutral-400 hover:text-white border border-neutral-850 hover:bg-neutral-900"
+                }`}
+              >
+                <ShieldCheck size={13} />
+                <span>Lesson Recovery &amp; Audit</span>
+              </button>
+            </div>
           </div>
 
           {/* GROUP 1: OPERATIONAL CORE */}
@@ -3161,6 +3218,27 @@ export default function AdminCMS({
               </div>
             )}
 
+          </div>
+        )}
+
+        {/* SUB-TAB: ACCOUNTS (live data) */}
+        {activeSubTab === "accounts" && (
+          <div className="animate-fade-in">
+            <AccountsPanel token={token} />
+          </div>
+        )}
+
+        {/* SUB-TAB: TUTOR APPLICATIONS (live data) */}
+        {activeSubTab === "tutor_applications" && (
+          <div className="animate-fade-in">
+            <TutorsPanel token={token} />
+          </div>
+        )}
+
+        {/* SUB-TAB: LESSON RECOVERY & AUDIT (live data) */}
+        {activeSubTab === "lesson_recovery" && (
+          <div className="animate-fade-in">
+            <OperationsPanel token={token} />
           </div>
         )}
 

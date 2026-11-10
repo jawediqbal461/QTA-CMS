@@ -5,7 +5,7 @@ import {
   Award, Filter, RotateCcw, Check as CheckIcon, Globe, CheckCircle,
 } from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { accountRequest, ApiError, getStoredAdminToken, request } from "../lib/api";
+import { accountRequest, ApiError, request } from "../lib/api";
 import { useSEO } from "../hooks/useSEO";
 
 type Role = "TUTOR" | "GUARDIAN" | "STUDENT";
@@ -1128,7 +1128,7 @@ type ManagedAccount = {
   };
 };
 
-function AccountsPanel({ token }: { token: string }) {
+export function AccountsPanel({ token }: { token: string }) {
   const [version, setVersion] = useState(0);
   const [query, setQuery] = useState("");
   const [role, setRole] = useState("");
@@ -1172,7 +1172,7 @@ function AccountsPanel({ token }: { token: string }) {
         </select>
       </label>
     </div>
-    <ErrorText value={action.error ?? result?.error} />
+    <ErrorText value={action.error || result?.error} />
     {notice && <p role="status" className="rounded-xl border border-emerald-500/25 bg-emerald-950/40 px-3.5 py-2.5 text-xs font-medium text-emerald-300">{notice}</p>}
     {!result && token && <p role="status" className="text-sm text-neutral-500">Loading accounts…</p>}
     {result?.data && !visible.length && <p className="text-sm text-neutral-400">No matching accounts.</p>}
@@ -1236,7 +1236,7 @@ function AccountsPanel({ token }: { token: string }) {
   </>;
 }
 
-function OperationsPanel({ token }: { token: string }) {
+export function OperationsPanel({ token }: { token: string }) {
   const [version, setVersion] = useState(0);
   const action = useAction();
   const operations = useResource<{
@@ -1249,7 +1249,7 @@ function OperationsPanel({ token }: { token: string }) {
     <div className="flex gap-4">
       <button className={ghostLink} onClick={() => setVersion((value) => value + 1)}>Refresh queue</button>
     </div>
-    <ErrorText value={action.error ?? operations?.error} />
+    <ErrorText value={action.error || operations?.error} />
     {!operations && <p role="status">Loading operations…</p>}
     {operations?.data && <>
       <section className={panel}>
@@ -1295,13 +1295,13 @@ function OperationsPanel({ token }: { token: string }) {
   </>;
 }
 
-function TutorsPanel({ token }: { token: string }) {
+export function TutorsPanel({ token }: { token: string }) {
   const [version, setVersion] = useState(0);
   const tutors = useResource<Profile[]>("/admin/tutors", token, version);
   const action = useAction();
   if (tutors?.unauthorized) return <p className="text-sm text-rose-400">Your session expired. Sign in again.</p>;
   return <>
-    <ErrorText value={action.error ?? tutors?.error} />
+    <ErrorText value={action.error || tutors?.error} />
     {!tutors && <p role="status" className="text-sm text-neutral-500">Loading applications…</p>}
     {tutors?.data?.length === 0 && <p className="text-sm text-neutral-400">No tutor applications yet.</p>}
     {tutors?.data?.map((tutor) => <article className={panel} key={tutor.accountId}>
@@ -1325,38 +1325,3 @@ function TutorsPanel({ token }: { token: string }) {
   </>;
 }
 
-export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
-  const token = getStoredAdminToken();
-  const { pathname } = useLocation();
-  const view = pathname.endsWith("/tutors") ? "tutors" : pathname.endsWith("/operations") ? "operations" : "accounts";
-  useSEO({
-    title: view === "tutors" ? "Tutor applications" : view === "operations" ? "Lesson recovery and audit" : "Academy account management",
-    noindex: true,
-  });
-  const tabs = [
-    { id: "accounts", label: "Accounts", to: "/admin", icon: Users },
-    { id: "tutors", label: "Tutor applications", to: "/admin/tutors", icon: GraduationCap },
-    { id: "operations", label: "Lesson recovery & audit", to: "/admin/operations", icon: ShieldCheck },
-  ] as const;
-  return <Page title="Academy Administration" eyebrow="Admin CMS">
-    <nav className="flex flex-wrap items-center gap-1 rounded-2xl border border-neutral-800 bg-neutral-900 p-2 text-xs font-bold">
-      {tabs.map(({ id, label, to, icon: Icon }) => (
-        <Link key={id} to={to} className={`flex items-center gap-1.5 rounded-xl px-3 py-2 transition ${
-          view === id ? "border border-emerald-500/25 bg-emerald-500/10 text-emerald-400" : "border border-transparent text-neutral-300 hover:bg-neutral-800 hover:text-white"
-        }`}>
-          <Icon size={13} />
-          <span>{label}</span>
-        </Link>
-      ))}
-      <Link className="rounded-xl px-3 py-2 text-amber-400 transition hover:bg-amber-500/10" to="/admin/content">Prototype content tools</Link>
-      <button className={`${dangerLink} ml-auto rounded-xl px-3 py-2 transition hover:bg-rose-500/10`} onClick={onLogout}>
-        <LogOut size={13} />
-        <span>Sign out</span>
-      </button>
-    </nav>
-    {!token ? <p className="text-sm text-neutral-400">Sign in as an administrator.</p> :
-      view === "tutors" ? <TutorsPanel token={token} /> :
-      view === "operations" ? <OperationsPanel token={token} /> :
-      <AccountsPanel token={token} />}
-  </Page>;
-}
