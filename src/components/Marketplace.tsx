@@ -1295,8 +1295,16 @@ export function OperationsPanel({ token }: { token: string }) {
   </>;
 }
 
+const approvalBadge: Record<string, string> = {
+  PENDING: "border-amber-500/25 text-amber-400",
+  APPROVED: "border-emerald-500/25 text-emerald-400",
+  REJECTED: "border-rose-500/25 text-rose-400",
+  SUSPENDED: "border-orange-500/25 text-orange-400",
+};
+
 export function TutorsPanel({ token }: { token: string }) {
   const [version, setVersion] = useState(0);
+  const [expanded, setExpanded] = useState<string>("");
   const tutors = useResource<Profile[]>("/admin/tutors", token, version);
   const action = useAction();
   if (tutors?.unauthorized) return <p className="text-sm text-rose-400">Your session expired. Sign in again.</p>;
@@ -1304,24 +1312,127 @@ export function TutorsPanel({ token }: { token: string }) {
     <ErrorText value={action.error || tutors?.error} />
     {!tutors && <p role="status" className="text-sm text-neutral-500">Loading applications…</p>}
     {tutors?.data?.length === 0 && <p className="text-sm text-neutral-400">No tutor applications yet.</p>}
-    {tutors?.data?.map((tutor) => <article className={panel} key={tutor.accountId}>
-      <h2 className="text-sm font-bold text-white">{tutor.account.fullName} · {tutor.approvalStatus}</h2>
-      <p>{tutor.account.email}</p>
-      <p>{tutor.specialties.join(", ")} · {tutor.languages.join(", ")} · {tutor.experienceYears} years · USD {tutor.hourlyRate}/hour</p>
-      <p className="whitespace-pre-wrap">{tutor.bio}</p>
-      <p className="whitespace-pre-wrap">Qualifications: {tutor.qualifications || "None supplied"}</p>
-      <div className="flex flex-wrap gap-3">
-        {([["Approve", "APPROVED"], ["Reject", "REJECTED"], ["Suspend", "SUSPENDED"]] as const).map(([label, status]) => (
-          <button className={button} key={status} disabled={action.busy || tutor.approvalStatus === status} onClick={() => {
+    {tutors?.data?.map((tutor) => (
+      <article className={panel} key={tutor.accountId}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neutral-700 bg-neutral-900 text-sm font-black text-neutral-300">
+              {tutor.account.fullName.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-white">{tutor.account.fullName}</h2>
+              <p className="text-xs text-neutral-400">{tutor.account.email}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <span className={`${badge} ${approvalBadge[tutor.approvalStatus] ?? ""}`}>{tutor.approvalStatus}</span>
+                <span className={badge}>{tutor.experienceYears} yrs · ${tutor.hourlyRate}/hr</span>
+              </div>
+            </div>
+          </div>
+          <button className={ghostLink} type="button" onClick={() => setExpanded(expanded === tutor.accountId ? "" : tutor.accountId)}>
+            {expanded === tutor.accountId ? "Collapse" : "Review details"}
+          </button>
+        </div>
+        {expanded === tutor.accountId && (
+          <div className="space-y-3 border-t border-neutral-800 pt-3 text-xs text-neutral-400">
+            <p><span className="font-bold text-neutral-300">Subjects:</span> {tutor.specialties.join(", ") || "—"}</p>
+            <p><span className="font-bold text-neutral-300">Languages:</span> {tutor.languages.join(", ") || "—"}</p>
+            {tutor.bio && <div>
+              <p className="mb-1 font-bold text-neutral-300">Bio</p>
+              <p className="whitespace-pre-wrap leading-relaxed">{tutor.bio}</p>
+            </div>}
+            {tutor.qualifications && <div>
+              <p className="mb-1 font-bold text-neutral-300">Qualifications</p>
+              <p className="whitespace-pre-wrap leading-relaxed">{tutor.qualifications}</p>
+            </div>}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2 border-t border-neutral-800 pt-3">
+          {([["Approve", "APPROVED"], ["Reject", "REJECTED"], ["Suspend", "SUSPENDED"]] as const).map(([label, status]) => (
+            <button key={status} disabled={action.busy || tutor.approvalStatus === status}
+              className={`rounded-lg px-2.5 py-1.5 text-xs font-bold transition disabled:opacity-40 ${
+                status === "APPROVED" ? "text-emerald-400 hover:bg-emerald-500/10"
+                : status === "REJECTED" ? "text-rose-400 hover:bg-rose-500/10"
+                : "text-orange-400 hover:bg-orange-500/10"
+              }`}
+              onClick={() => void action.run(async () => {
+                try { await accountRequest(`/admin/tutors/${tutor.accountId}`, token, "PATCH", { status, updatedAt: tutor.updatedAt }); }
+                finally { setVersion((v) => v + 1); }
+              })}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </article>
+    ))}
+  </>;
+}
+
+export function TutorProfilesPanel({ token }: { token: string }) {
+  const [version, setVersion] = useState(0);
+  const [selected, setSelected] = useState("");
+  const [notice, setNotice] = useState("");
+  const action = useAction();
+  const result = useResource<ManagedAccount[]>("/admin/accounts", token, version);
+  const tutors = (result?.data ?? []).filter(
+    (entry) => entry.role === "TUTOR" && entry.account.tutorProfile?.approvalStatus === "APPROVED"
+  );
+  if (result?.unauthorized) return <p className="text-sm text-rose-400">Session expired. Sign in again.</p>;
+  return <>
+    <ErrorText value={action.error || result?.error} />
+    {notice && <p role="status" className="rounded-xl border border-emerald-500/25 bg-emerald-950/40 px-3.5 py-2.5 text-xs font-medium text-emerald-300">{notice}</p>}
+    {!result && token && <p role="status" className="text-sm text-neutral-500">Loading tutor profiles…</p>}
+    {result?.data && !tutors.length && <p className="text-sm text-neutral-400">No approved tutors yet. Approve applications from the Tutor Applications tab.</p>}
+    {tutors.map(({ account, membershipId }) => (
+      <article key={membershipId} className={panel}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-950 text-sm font-black text-emerald-400">
+              {account.fullName.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-white">{account.fullName}</h2>
+              <p className="text-xs text-neutral-400">{account.email}</p>
+              {account.tutorProfile && (
+                <p className="mt-1.5 text-[11px] text-neutral-500">
+                  {account.tutorProfile.specialties.join(", ")} · {account.tutorProfile.languages.join(", ")} · ${account.tutorProfile.hourlyRate}/hr
+                </p>
+              )}
+            </div>
+          </div>
+          <button className={ghostLink} type="button" onClick={() => { setSelected(selected === membershipId ? "" : membershipId); setNotice(""); }}>
+            {selected === membershipId ? "Close" : "Edit profile"}
+          </button>
+        </div>
+        {account.tutorProfile?.bio && (
+          <p className={`text-xs leading-relaxed text-neutral-400 ${selected === membershipId ? "whitespace-pre-wrap" : "line-clamp-2"}`}>
+            {account.tutorProfile.bio}
+          </p>
+        )}
+        {selected === membershipId && (
+          <form className="space-y-3 border-t border-neutral-800 pt-3" onSubmit={(event) => {
+            event.preventDefault();
+            const data = new FormData(event.currentTarget);
+            setNotice("");
             void action.run(async () => {
-              try {
-                await accountRequest(`/admin/tutors/${tutor.accountId}`, token, "PATCH", { status, updatedAt: tutor.updatedAt });
-              } finally { setVersion((value) => value + 1); }
+              await accountRequest(`/admin/accounts/${account.id}/profile`, token, "PATCH", {
+                fullName: data.get("fullName"),
+                timeZone: account.timeZone,
+                ...(account.tutorProfile ? { tutorProfile: profileData(data) } : {}),
+              });
+              setNotice(`${account.fullName}: profile saved.`);
+              setVersion((v) => v + 1);
             });
-          }}>{label}</button>
-        ))}
-      </div>
-    </article>)}
+          }}>
+            <label className="block space-y-1.5 text-xs font-bold text-neutral-300">
+              Full name
+              <input name="fullName" className={input} required minLength={2} maxLength={120} defaultValue={account.fullName} />
+            </label>
+            {account.tutorProfile && <ProfileFields profile={account.tutorProfile} />}
+            <button className={button} disabled={action.busy}>Save profile changes</button>
+          </form>
+        )}
+      </article>
+    ))}
   </>;
 }
 

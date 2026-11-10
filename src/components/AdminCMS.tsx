@@ -4,15 +4,15 @@ import {
   Copy, Check, FileText, Globe, Zap, AlertCircle, Trash2, ArrowUpRight, HelpCircle,
   Search, Plus, Edit, BarChart3, TrendingUp, Activity, DollarSign, Clock, RefreshCw, Star,
   Users, Calendar, PieChart, Lock, Sparkles, Bold, Italic, Heading, Quote, List, ListOrdered, Image,
-  GraduationCap, ShieldCheck
+  GraduationCap, ShieldCheck, UserCheck
 } from "lucide-react";
 import { Curriculum, Tutor, ARCHITECTURE_INFO, Surah, Juz, BlogPost, INITIAL_SURAHS, INITIAL_JUZ, INITIAL_BLOGS, REALISTIC_QURAN_VERSES, slugify } from "../data/mockData";
 import Breadcrumbs from "./Breadcrumbs";
 import { useSEO } from "../hooks/useSEO";
-import { AccountsPanel, TutorsPanel, OperationsPanel } from "./Marketplace";
+import { AccountsPanel, TutorsPanel, TutorProfilesPanel, OperationsPanel } from "./Marketplace";
 
 type AdminSubTab = "overview" | "architecture" | "sitemap" | "database" | "curriculum" | "profiles" | "quran_crud" | "blog_crud"
-  | "accounts" | "tutor_applications" | "lesson_recovery";
+  | "accounts" | "tutor_applications" | "tutor_profiles" | "lesson_recovery";
 
 interface AdminCMSProps {
   curriculums: Curriculum[];
@@ -790,6 +790,8 @@ export default function AdminCMS({
         ? "Academy Account Management"
         : activeSubTab === "tutor_applications"
         ? "Tutor Application Review"
+        : activeSubTab === "tutor_profiles"
+        ? "Tutor Profile Management"
         : "Lesson Recovery & Audit Log"
     }
   ];
@@ -862,6 +864,17 @@ export default function AdminCMS({
               >
                 <GraduationCap size={13} />
                 <span>Tutor Applications</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab("tutor_profiles")}
+                className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl transition duration-300 flex items-center space-x-2.5 ${
+                  activeSubTab === "tutor_profiles"
+                    ? "bg-sky-500 text-neutral-950 shadow-lg shadow-sky-500/10 font-extrabold"
+                    : "bg-neutral-950/80 text-neutral-400 hover:text-white border border-neutral-850 hover:bg-neutral-900"
+                }`}
+              >
+                <UserCheck size={13} />
+                <span>Tutor Profiles</span>
               </button>
               <button
                 onClick={() => setActiveSubTab("lesson_recovery")}
@@ -3232,6 +3245,13 @@ export default function AdminCMS({
         {activeSubTab === "tutor_applications" && (
           <div className="animate-fade-in">
             <TutorsPanel token={token} />
+          </div>
+        )}
+
+        {/* SUB-TAB: TUTOR PROFILES (live data) */}
+        {activeSubTab === "tutor_profiles" && (
+          <div className="animate-fade-in">
+            <TutorProfilesPanel token={token} />
           </div>
         )}
 
