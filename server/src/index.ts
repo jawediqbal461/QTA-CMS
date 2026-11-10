@@ -8,6 +8,7 @@ import { tutorRouter } from "./routes/tutor.js";
 import { guardianRouter } from "./routes/guardian.js";
 import { directoryRouter } from "./routes/directory.js";
 import { resourcesRouter } from "./routes/resources.js";
+import { coursesRouter } from "./routes/courses.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { mailConfig, startNotificationWorker } from "./lib/notifications.js";
 import { prisma } from "./lib/prisma.js";
@@ -53,6 +54,7 @@ app.use("/api/guardian", guardianRouter);
 app.use("/api/tutors", directoryRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/resources", resourcesRouter);
+app.use("/api/courses", coursesRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });

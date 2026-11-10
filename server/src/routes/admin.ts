@@ -440,3 +440,109 @@ adminRouter.patch("/payments/:id/refund", asyncHandler(async (req, res) => {
   });
   res.json(updated);
 }));
+
+// Course Approval Queue — M10
+const adminCourseSelect = {
+  id: true, tutorId: true, title: true, description: true, program: true, level: true,
+  language: true, format: true, durationWeeks: true, prerequisites: true, outcomes: true,
+  priceAmount: true, priceCurrency: true, status: true, reviewNote: true,
+  publishedAt: true, createdAt: true, updatedAt: true,
+  tutor: { select: { account: { select: { fullName: true, email: true } } } },
+  reviewedBy: { select: { fullName: true } },
+  modules: {
+    orderBy: { position: "asc" as const },
+    select: { id: true, position: true, title: true, description: true },
+  },
+} as const;
+
+adminRouter.get("/courses", asyncHandler(async (req, res) => {
+  const { academyId } = req.session!;
+  const { status } = req.query as { status?: string };
+  const courses = await prisma.course.findMany({
+    where: {
+      academyId,
+      ...(status ? { status: status as any } : {}),
+    },
+    orderBy: { updatedAt: "desc" },
+    select: adminCourseSelect,
+  });
+  res.json(courses);
+}));
+
+adminRouter.patch("/courses/:id/approve", asyncHandler(async (req, res) => {
+  const { academyId, accountId } = req.session!;
+  const course = await prisma.course.findFirst({ where: { id: req.params.id, academyId } });
+  if (!course) return res.status(404).json({ error: "Course not found." });
+  if (course.status !== "PENDING_REVIEW") {
+    return res.status(409).json({ error: "Only PENDING_REVIEW courses can be approved." });
+  }
+  const updated = await prisma.$transaction(async (tx) => {
+    const c = await tx.course.update({
+      where: { id: req.params.id },
+      data: { status: "PUBLISHED", reviewNote: null, reviewedById: accountId, publishedAt: new Date() },
+      select: adminCourseSelect,
+    });
+    await tx.auditEvent.create({
+      data: {
+        actorId: accountId, academyId,
+        action: "course.approved",
+        targetType: "course", targetId: c.id,
+      },
+    });
+    return c;
+  });
+  res.json(updated);
+}));
+
+adminRouter.patch("/courses/:id/request-changes", asyncHandler(async (req, res) => {
+  const { academyId, accountId } = req.session!;
+  const { note } = req.body as { note?: string };
+  if (!note?.trim()) return res.status(400).json({ error: "A reviewer note is required." });
+  const course = await prisma.course.findFirst({ where: { id: req.params.id, academyId } });
+  if (!course) return res.status(404).json({ error: "Course not found." });
+  if (course.status !== "PENDING_REVIEW") {
+    return res.status(409).json({ error: "Only PENDING_REVIEW courses can have changes requested." });
+  }
+  const updated = await prisma.$transaction(async (tx) => {
+    const c = await tx.course.update({
+      where: { id: req.params.id },
+      data: { status: "CHANGES_REQUESTED", reviewNote: note.trim(), reviewedById: accountId },
+      select: adminCourseSelect,
+    });
+    await tx.auditEvent.create({
+      data: {
+        actorId: accountId, academyId,
+        action: "course.changes_requested",
+        targetType: "course", targetId: c.id,
+        metadata: { note: note.trim() },
+      },
+    });
+    return c;
+  });
+  res.json(updated);
+}));
+
+adminRouter.patch("/courses/:id/unpublish", asyncHandler(async (req, res) => {
+  const { academyId, accountId } = req.session!;
+  const course = await prisma.course.findFirst({ where: { id: req.params.id, academyId } });
+  if (!course) return res.status(404).json({ error: "Course not found." });
+  if (course.status !== "PUBLISHED") {
+    return res.status(409).json({ error: "Only PUBLISHED courses can be unpublished." });
+  }
+  const updated = await prisma.$transaction(async (tx) => {
+    const c = await tx.course.update({
+      where: { id: req.params.id },
+      data: { status: "UNPUBLISHED" },
+      select: adminCourseSelect,
+    });
+    await tx.auditEvent.create({
+      data: {
+        actorId: accountId, academyId,
+        action: "course.unpublished",
+        targetType: "course", targetId: c.id,
+      },
+    });
+    return c;
+  });
+  res.json(updated);
+}));

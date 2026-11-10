@@ -68,6 +68,15 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum CourseStatus {
+  DRAFT
+  PENDING_REVIEW
+  CHANGES_REQUESTED
+  PUBLISHED
+  UNPUBLISHED
+  ARCHIVED
+}
+
 model Academy {
   id          String               @id @default(uuid())
   name        String
@@ -80,6 +89,7 @@ model Academy {
   auditEvents AuditEvent[]
   learningRequests LearningRequest[]
   payments         PilotPayment[]
+  courses          Course[]
 
   @@map("academies")
 }
@@ -109,6 +119,7 @@ model Account {
   createdResources Resource[]        @relation("ResourceCreatedBy")
   payerPayments    PilotPayment[]    @relation("PayerPayments")
   confirmerPayments PilotPayment[]   @relation("ConfirmerPayments")
+  reviewedCourses  Course[]          @relation("CourseReviewer")
 
   @@map("accounts")
 }
@@ -180,6 +191,7 @@ model TutorProfile {
   availabilitySlots AvailabilitySlot[]
   bookings          Booking[]          @relation("TutorBookings")
   assignments       LearningRequest[]  @relation("TutorAssignments")
+  courses           Course[]           @relation("TutorCourses")
 
   @@map("tutor_profiles")
 }
@@ -349,6 +361,51 @@ model PilotPayment {
   @@index([bookingId])
   @@index([payerId])
   @@map("pilot_payments")
+}
+
+model Course {
+  id             String       @id @default(uuid())
+  academyId      String
+  academy        Academy      @relation(fields: [academyId], references: [id], onDelete: Cascade)
+  tutorId        String
+  tutor          TutorProfile @relation("TutorCourses", fields: [tutorId], references: [accountId], onDelete: Cascade)
+  title          String
+  description    String?
+  program        String
+  level          String
+  language       String
+  format         String
+  durationWeeks  Int?
+  prerequisites  String?
+  outcomes       String?
+  priceAmount    Decimal?     @db.Decimal(10, 2)
+  priceCurrency  String       @default("USD")
+  status         CourseStatus @default(DRAFT)
+  reviewNote     String?
+  reviewedById   String?
+  reviewedBy     Account?     @relation("CourseReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  publishedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  modules CourseModule[]
+
+  @@index([academyId, status, program])
+  @@index([tutorId])
+  @@map("courses")
+}
+
+model CourseModule {
+  id          String   @id @default(uuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  position    Int
+  title       String
+  description String?
+  createdAt   DateTime @default(now())
+
+  @@index([courseId, position])
+  @@map("course_modules")
 }
 
 model LearningRequest {

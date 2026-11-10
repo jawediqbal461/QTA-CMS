@@ -12,9 +12,10 @@ import { useSEO } from "../hooks/useSEO";
 import { AccountsPanel, TutorsPanel, TutorProfilesPanel, OperationsPanel, RequestsPanel } from "./Marketplace";
 import { ResourcesAdminPanel } from "./ResourcesPage";
 import { PaymentsAdminPanel } from "./PricingPage";
+import { CourseApprovalPanel } from "./CoursesPage";
 
 type AdminSubTab = "overview" | "architecture" | "sitemap" | "database" | "curriculum" | "profiles" | "quran_crud" | "blog_crud"
-  | "accounts" | "tutor_applications" | "tutor_profiles" | "requests" | "resources" | "payments" | "lesson_recovery";
+  | "accounts" | "tutor_applications" | "tutor_profiles" | "requests" | "resources" | "payments" | "courses" | "lesson_recovery";
 
 interface AdminCMSProps {
   curriculums: Curriculum[];
@@ -800,6 +801,8 @@ export default function AdminCMS({
         ? "Resource Catalog"
         : activeSubTab === "payments"
         ? "Payment Reconciliation"
+        : activeSubTab === "courses"
+        ? "Course Approval Queue"
         : "Lesson Recovery & Audit Log"
     }
   ];
@@ -916,6 +919,17 @@ export default function AdminCMS({
               >
                 <DollarSign size={13} />
                 <span>Pilot Payments</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab("courses")}
+                className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl transition duration-300 flex items-center space-x-2.5 ${
+                  activeSubTab === "courses"
+                    ? "bg-sky-500 text-neutral-950 shadow-lg shadow-sky-500/10 font-extrabold"
+                    : "bg-neutral-950/80 text-neutral-400 hover:text-white border border-neutral-850 hover:bg-neutral-900"
+                }`}
+              >
+                <GraduationCap size={13} />
+                <span>Course Approval</span>
               </button>
               <button
                 onClick={() => setActiveSubTab("lesson_recovery")}
@@ -3314,6 +3328,13 @@ export default function AdminCMS({
         {activeSubTab === "payments" && (
           <div className="animate-fade-in">
             <PaymentsAdminPanel token={token} />
+          </div>
+        )}
+
+        {/* SUB-TAB: COURSE APPROVAL QUEUE (live data) */}
+        {activeSubTab === "courses" && (
+          <div className="animate-fade-in">
+            <CourseApprovalPanel token={token} />
           </div>
         )}
 

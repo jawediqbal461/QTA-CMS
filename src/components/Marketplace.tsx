@@ -7,6 +7,7 @@ import {
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { accountRequest, ApiError, request } from "../lib/api";
 import { useSEO } from "../hooks/useSEO";
+import { TutorCoursePanel } from "./CoursesPage";
 
 type Role = "TUTOR" | "GUARDIAN" | "STUDENT";
 const accountPaths = {
@@ -501,7 +502,7 @@ function AccountForm({ role, register, onSession }: { role: Role; register: bool
   </form>;
 }
 
-type DeskTab = "overview" | "lessons" | "assignments" | "requests" | "profile" | "notifications";
+type DeskTab = "overview" | "lessons" | "assignments" | "requests" | "profile" | "notifications" | "courses";
 
 function DeskSidebar({ role, fullName, email, activeTab, setActiveTab, unread, signOut }: {
   role: Role; fullName: string; email: string; activeTab: DeskTab; setActiveTab: (tab: DeskTab) => void;
@@ -511,6 +512,7 @@ function DeskSidebar({ role, fullName, email, activeTab, setActiveTab, unread, s
     { id: "overview", label: "Overview", icon: CalendarCheck },
     { id: "lessons", label: "Lessons", icon: BookOpen },
     ...(role === "TUTOR" ? [{ id: "assignments" as DeskTab, label: "Assignments", icon: Inbox }] : []),
+    ...(role === "TUTOR" ? [{ id: "courses" as DeskTab, label: "My Courses", icon: GraduationCap }] : []),
     ...(role === "GUARDIAN" ? [{ id: "requests" as DeskTab, label: "Tutor Requests", icon: Inbox }] : []),
     { id: "profile", label: "My profile", icon: Users },
     { id: "notifications", label: "Notifications", icon: Bell, count: unread },
@@ -962,6 +964,11 @@ function TutorWorkspace({ token, profileVersion, deskVersion, timeZone, refreshA
         refresh: refreshAccount,
       })}
     </div>
+    {activeTab === "courses" && (
+      <div className="space-y-4">
+        <TutorCoursePanel token={token} />
+      </div>
+    )}
   </>;
 }
 
