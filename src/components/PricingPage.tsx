@@ -228,7 +228,7 @@ export function PaymentsAdminPanel({ token }: { token: string }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await accountRequest<Payment[]>("/api/admin/payments", token);
+      const data = await accountRequest<Payment[]>("/admin/payments", token);
       setPayments(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load payments.");
@@ -242,7 +242,7 @@ export function PaymentsAdminPanel({ token }: { token: string }) {
   async function handleAction(id: string, action: "confirm" | "refund") {
     setActionId(id);
     try {
-      await accountRequest(`/api/admin/payments/${id}/${action}`, token, "PATCH");
+      await accountRequest(`/admin/payments/${id}/${action}`, token, "PATCH");
       await load();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Action failed.");
@@ -259,7 +259,7 @@ export function PaymentsAdminPanel({ token }: { token: string }) {
     if (!form.method.trim()) { setFormError("Payment method is required."); return; }
     setSaving(true);
     try {
-      await accountRequest("/api/admin/payments", token, "POST", {
+      await accountRequest("/admin/payments", token, "POST", {
         bookingId: form.bookingId.trim() || undefined,
         payerId: form.payerId.trim(),
         amount: Number(form.amount),

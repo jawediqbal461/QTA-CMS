@@ -546,3 +546,84 @@ adminRouter.patch("/courses/:id/unpublish", asyncHandler(async (req, res) => {
   });
   res.json(updated);
 }));
+
+// Analytics dashboard — M12
+adminRouter.get("/analytics", asyncHandler(async (req, res) => {
+  const { academyId } = req.session!;
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  const [
+    bookingCounts,
+    memberCounts,
+    paymentGroups,
+    upcomingCount,
+    recentBookings,
+    pendingCourses,
+    publishedCourses,
+    pendingRequests,
+    dailyBookings,
+  ] = await Promise.all([
+    prisma.booking.groupBy({
+      by: ["status"],
+      where: { academyId },
+      _count: { _all: true },
+    }),
+    prisma.academyMembership.groupBy({
+      by: ["role"],
+      where: { academyId, status: "ACTIVE" },
+      _count: { _all: true },
+    }),
+    prisma.pilotPayment.groupBy({
+      by: ["status"],
+      where: { academyId },
+      _count: { _all: true },
+      _sum: { amount: true },
+    }),
+    prisma.booking.count({
+      where: { academyId, status: { in: ["BOOKED", "RESCHEDULED"] }, scheduledAtUtc: { gt: now } },
+    }),
+    prisma.booking.findMany({
+      where: { academyId },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      select: {
+        id: true, status: true, scheduledAtUtc: true, createdAt: true,
+        student: { select: { fullName: true } },
+        tutor: { select: { account: { select: { fullName: true } } } },
+      },
+    }),
+    prisma.course.count({ where: { academyId, status: "PENDING_REVIEW" } }),
+    prisma.course.count({ where: { academyId, status: "PUBLISHED" } }),
+    prisma.learningRequest.count({ where: { academyId, status: "PENDING" } }),
+    prisma.booking.findMany({
+      where: { academyId, createdAt: { gte: thirtyDaysAgo } },
+      select: { createdAt: true },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
+
+  // Aggregate bookings per day for the sparkline
+  const bookingsByDay: Record<string, number> = {};
+  for (const b of dailyBookings) {
+    const day = b.createdAt.toISOString().slice(0, 10);
+    bookingsByDay[day] = (bookingsByDay[day] ?? 0) + 1;
+  }
+  const sparkline = Object.entries(bookingsByDay).map(([date, count]) => ({ date, count }));
+
+  res.json({
+    bookings: Object.fromEntries(bookingCounts.map((g) => [g.status, g._count._all])),
+    upcomingBookings: upcomingCount,
+    members: Object.fromEntries(memberCounts.map((g) => [g.role, g._count._all])),
+    payments: paymentGroups.map((g) => ({
+      status: g.status,
+      count: g._count._all,
+      total: g._sum.amount?.toString() ?? "0",
+    })),
+    pendingCourses,
+    publishedCourses,
+    pendingRequests,
+    recentBookings,
+    sparkline,
+  });
+}));

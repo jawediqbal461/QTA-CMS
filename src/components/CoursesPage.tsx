@@ -222,7 +222,7 @@ export function TutorCoursePanel({ token }: { token: string }) {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const data = await accountRequest<TutorCourse[]>("/api/courses/tutor/my", token);
+      const data = await accountRequest<TutorCourse[]>("/courses/tutor/my", token);
       setCourses(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load.");
@@ -268,9 +268,9 @@ export function TutorCoursePanel({ token }: { token: string }) {
     };
     try {
       if (editing) {
-        await accountRequest(`/api/courses/tutor/my/${editing.id}`, token, "PATCH", payload);
+        await accountRequest(`/courses/tutor/my/${editing.id}`, token, "PATCH", payload);
       } else {
-        await accountRequest("/api/courses/tutor/my", token, "POST", payload);
+        await accountRequest("/courses/tutor/my", token, "POST", payload);
       }
       closeForm(); await load();
     } catch (e: unknown) {
@@ -281,7 +281,7 @@ export function TutorCoursePanel({ token }: { token: string }) {
   async function handleSubmit(id: string) {
     setActionId(id);
     try {
-      await accountRequest(`/api/courses/tutor/my/${id}/submit`, token, "POST");
+      await accountRequest(`/courses/tutor/my/${id}/submit`, token, "POST");
       await load();
     } catch (e: unknown) { alert(e instanceof Error ? e.message : "Failed to submit."); }
     finally { setActionId(null); }
@@ -291,7 +291,7 @@ export function TutorCoursePanel({ token }: { token: string }) {
     if (!confirm("Delete this course permanently?")) return;
     setActionId(id);
     try {
-      await accountRequest(`/api/courses/tutor/my/${id}`, token, "DELETE");
+      await accountRequest(`/courses/tutor/my/${id}`, token, "DELETE");
       await load();
     } catch (e: unknown) { alert(e instanceof Error ? e.message : "Failed to delete."); }
     finally { setActionId(null); }
@@ -482,7 +482,7 @@ export function CourseApprovalPanel({ token }: { token: string }) {
     setLoading(true); setError(null);
     try {
       const params = statusFilter ? `?status=${statusFilter}` : "";
-      const data = await accountRequest<AdminCourse[]>(`/api/admin/courses${params}`, token);
+      const data = await accountRequest<AdminCourse[]>(`/admin/courses${params}`, token);
       setCourses(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load.");
@@ -494,7 +494,7 @@ export function CourseApprovalPanel({ token }: { token: string }) {
   async function doAction(id: string, action: "approve" | "unpublish") {
     setActionId(id);
     try {
-      await accountRequest(`/api/admin/courses/${id}/${action}`, token, "PATCH");
+      await accountRequest(`/admin/courses/${id}/${action}`, token, "PATCH");
       await load();
     } catch (e: unknown) { alert(e instanceof Error ? e.message : "Action failed."); }
     finally { setActionId(null); }
@@ -505,7 +505,7 @@ export function CourseApprovalPanel({ token }: { token: string }) {
     if (!note.trim()) { setNoteError("Note is required."); return; }
     setActionId(id);
     try {
-      await accountRequest(`/api/admin/courses/${id}/request-changes`, token, "PATCH", { note: note.trim() });
+      await accountRequest(`/admin/courses/${id}/request-changes`, token, "PATCH", { note: note.trim() });
       setNoteId(null); setNote("");
       await load();
     } catch (e: unknown) { setNoteError(e instanceof Error ? e.message : "Failed."); }

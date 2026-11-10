@@ -9,13 +9,14 @@ import {
 import { Curriculum, Tutor, ARCHITECTURE_INFO, Surah, Juz, BlogPost, INITIAL_SURAHS, INITIAL_JUZ, INITIAL_BLOGS, REALISTIC_QURAN_VERSES, slugify } from "../data/mockData";
 import Breadcrumbs from "./Breadcrumbs";
 import { useSEO } from "../hooks/useSEO";
+import { accountRequest } from "../lib/api";
 import { AccountsPanel, TutorsPanel, TutorProfilesPanel, OperationsPanel, RequestsPanel } from "./Marketplace";
 import { ResourcesAdminPanel } from "./ResourcesPage";
 import { PaymentsAdminPanel } from "./PricingPage";
 import { CourseApprovalPanel } from "./CoursesPage";
 
 type AdminSubTab = "overview" | "architecture" | "sitemap" | "database" | "curriculum" | "profiles" | "quran_crud" | "blog_crud"
-  | "accounts" | "tutor_applications" | "tutor_profiles" | "requests" | "resources" | "payments" | "courses" | "lesson_recovery";
+  | "accounts" | "tutor_applications" | "tutor_profiles" | "requests" | "resources" | "payments" | "courses" | "lesson_recovery" | "analytics";
 
 interface AdminCMSProps {
   curriculums: Curriculum[];
@@ -941,6 +942,17 @@ export default function AdminCMS({
               >
                 <ShieldCheck size={13} />
                 <span>Lesson Recovery &amp; Audit</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab("analytics")}
+                className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl transition duration-300 flex items-center space-x-2.5 ${
+                  activeSubTab === "analytics"
+                    ? "bg-sky-500 text-neutral-950 shadow-lg shadow-sky-500/10 font-extrabold"
+                    : "bg-neutral-950/80 text-neutral-400 hover:text-white border border-neutral-850 hover:bg-neutral-900"
+                }`}
+              >
+                <BarChart3 size={13} />
+                <span>Analytics</span>
               </button>
             </div>
           </div>
@@ -3347,8 +3359,169 @@ export default function AdminCMS({
 
         </div>
 
+        {/* SUB-TAB: ANALYTICS DASHBOARD */}
+        {activeSubTab === "analytics" && (
+          <div className="animate-fade-in">
+            <AnalyticsPanel token={token} />
+          </div>
+        )}
+
       </div>
 
+    </div>
+  );
+}
+
+// ── M12: Admin analytics dashboard ─────────────────────────────────────────
+
+type AnalyticsData = {
+  bookings: { [status: string]: number };
+  upcomingBookings: number;
+  members: { [role: string]: number };
+  payments: Array<{ status: string; count: number; total: string }>;
+  pendingCourses: number;
+  publishedCourses: number;
+  pendingRequests: number;
+  recentBookings: Array<{
+    id: string; status: string; scheduledAtUtc: string; createdAt: string;
+    student: { fullName: string };
+    tutor: { account: { fullName: string } } | null;
+  }>;
+  sparkline: Array<{ date: string; count: number }>;
+};
+
+function StatCard({ label, value, sub, icon: Icon, color }: {
+  label: string; value: number | string; sub?: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  color: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">{label}</span>
+        <Icon size={15} className={color} />
+      </div>
+      <span className="block text-3xl font-black text-white">{value}</span>
+      {sub && <span className="text-xs text-neutral-500">{sub}</span>}
+    </div>
+  );
+}
+
+function AnalyticsPanel({ token }: { token: string }) {
+  const [data, setData] = React.useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setLoading(true);
+    accountRequest<AnalyticsData>("/admin/analytics", token)
+      .then(setData)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load analytics."))
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  const bookingStatusColor: Record<string, string> = {
+    BOOKED: "text-sky-400", RESCHEDULED: "text-amber-400",
+    COMPLETED: "text-emerald-400", CANCELLED: "text-neutral-500", NO_SHOW: "text-rose-400",
+  };
+  const payStatusColor: Record<string, string> = {
+    PENDING: "text-amber-400", CONFIRMED: "text-emerald-400", REFUNDED: "text-sky-400",
+  };
+
+  const bookingValues = data ? (Object.values(data.bookings) as number[]) : [];
+  const totalBookings = bookingValues.reduce((s, v) => s + v, 0);
+  const confirmedPayTotal = data?.payments.find((p) => p.status === "CONFIRMED")?.total ?? "0";
+
+  return (
+    <div className="space-y-6">
+      {loading && <p className="text-sm text-neutral-500">Loading analytics…</p>}
+      {error && <p className="text-sm text-rose-400">{error}</p>}
+      {data && <>
+        {/* KPI row */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="Total bookings" value={totalBookings} sub={`${data.upcomingBookings} upcoming`} icon={Calendar} color="text-sky-400" />
+          <StatCard label="Active tutors" value={(data.members["TUTOR"] as number | undefined) ?? 0} sub={`${(data.members["GUARDIAN"] as number | undefined) ?? 0} guardians`} icon={Users} color="text-emerald-400" />
+          <StatCard label="Payments confirmed" value={`$${confirmedPayTotal}`} sub={`${data.payments.find((p) => p.status === "PENDING")?.count ?? 0} pending`} icon={DollarSign} color="text-amber-400" />
+          <StatCard label="Courses published" value={data.publishedCourses} sub={`${data.pendingCourses} pending review`} icon={GraduationCap} color="text-violet-400" />
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Booking status breakdown */}
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5 space-y-3">
+            <h2 className="flex items-center gap-2 text-sm font-bold text-white">
+              <BarChart3 size={15} className="text-sky-400" />
+              <span>Bookings by status</span>
+            </h2>
+            {(Object.entries(data.bookings) as [string, number][]).map(([status, count]) => (
+              <div key={status} className="flex items-center gap-3">
+                <span className={`w-28 shrink-0 text-xs font-bold ${bookingStatusColor[status] ?? "text-neutral-400"}`}>{status}</span>
+                <div className="flex-1 h-2 rounded-full bg-neutral-800 overflow-hidden">
+                  <div className="h-full bg-sky-500/60 rounded-full" style={{ width: `${totalBookings ? Math.round((count / totalBookings) * 100) : 0}%` }} />
+                </div>
+                <span className="w-8 text-right text-xs text-neutral-400">{count}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Payment summary */}
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5 space-y-3">
+            <h2 className="flex items-center gap-2 text-sm font-bold text-white">
+              <DollarSign size={15} className="text-amber-400" />
+              <span>Payments</span>
+            </h2>
+            {data.payments.length === 0 && <p className="text-sm text-neutral-400">No payments recorded yet.</p>}
+            {data.payments.map((p) => (
+              <div key={p.status} className="flex items-center justify-between">
+                <span className={`text-xs font-bold ${payStatusColor[p.status] ?? "text-neutral-400"}`}>{p.status}</span>
+                <span className="text-xs text-neutral-300">{p.count} payments · ${Number(p.total).toFixed(2)}</span>
+              </div>
+            ))}
+            <div className="border-t border-neutral-800 pt-2 flex items-center justify-between">
+              <span className="text-xs font-bold text-neutral-400">Requests pending</span>
+              <span className="text-xs text-neutral-300">{data.pendingRequests} open</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 30-day booking trend sparkline */}
+        {data.sparkline.length > 0 && (
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5 space-y-3">
+            <h2 className="flex items-center gap-2 text-sm font-bold text-white">
+              <TrendingUp size={15} className="text-emerald-400" />
+              <span>Bookings created · last 30 days</span>
+            </h2>
+            <div className="flex items-end gap-0.5 h-16">
+              {(() => {
+                const max = Math.max(...data.sparkline.map((d) => d.count), 1);
+                return data.sparkline.map((d) => (
+                  <div key={d.date} title={`${d.date}: ${d.count}`}
+                    className="flex-1 bg-sky-500/50 hover:bg-sky-400 rounded-sm transition-colors min-w-0"
+                    style={{ height: `${Math.round((d.count / max) * 100)}%` }} />
+                ));
+              })()}
+            </div>
+            <p className="text-[11px] text-neutral-600">{data.sparkline[0]?.date} – {data.sparkline[data.sparkline.length - 1]?.date}</p>
+          </div>
+        )}
+
+        {/* Recent bookings */}
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5 space-y-3">
+          <h2 className="flex items-center gap-2 text-sm font-bold text-white">
+            <Activity size={15} className="text-violet-400" />
+            <span>Recent bookings</span>
+          </h2>
+          {data.recentBookings.length === 0 && <p className="text-sm text-neutral-400">No bookings yet.</p>}
+          {data.recentBookings.map((b) => (
+            <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-800 pt-2">
+              <div>
+                <p className="text-xs font-bold text-white">{b.student.fullName} · {b.tutor?.account.fullName ?? "—"}</p>
+                <p className="text-[11px] text-neutral-500">{new Date(b.scheduledAtUtc).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</p>
+              </div>
+              <span className={`text-[10px] font-bold ${bookingStatusColor[b.status] ?? "text-neutral-400"}`}>{b.status}</span>
+            </div>
+          ))}
+        </div>
+      </>}
     </div>
   );
 }
