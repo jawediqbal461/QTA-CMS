@@ -459,7 +459,7 @@ export default function App() {
                 }`}
               >
                 <LogIn size={14} />
-                <span>Login Desks</span>
+                <span>Login</span>
                 <ChevronDown size={12} className={`opacity-60 transition-transform duration-200 ${deskMenuOpen ? "rotate-180" : ""}`} />
               </button>
 
@@ -596,17 +596,6 @@ export default function App() {
               )}
             </button>
 
-            <button
-              onClick={() => navigate("/admin")}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                isPath("/admin")
-                  ? "bg-amber-500 text-neutral-950 font-extrabold shadow-md hover:bg-amber-400"
-                  : "text-neutral-400 hover:text-white hover:bg-white/5"
-              }`}
-            >
-              <Layers size={14} className={isPath("/admin") ? "text-neutral-950" : "text-amber-400"} />
-              <span>Admins</span>
-            </button>
 
           </nav>
 
@@ -799,20 +788,6 @@ export default function App() {
                   </button>
                 </div>
 
-                <button
-                  onClick={() => {
-                    navigate("/admin");
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className={`w-full p-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 border ${
-                    isPath("/admin")
-                      ? "bg-amber-500 text-neutral-950 border-transparent font-extrabold"
-                      : "bg-neutral-900 text-amber-400 border-transparent hover:bg-neutral-850"
-                  }`}
-                >
-                  <Layers size={14} />
-                  <span>Admin Control Center</span>
-                </button>
               </div>
 
               {/* Sign Up Section */}
