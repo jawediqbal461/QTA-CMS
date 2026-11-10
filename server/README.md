@@ -179,5 +179,14 @@ npx pm2 restart qta-api
 After updating the server, run `npm run prisma:generate`, `npm run build`, and `npm run prisma:migrate` before restarting the API. Migration `0002_tutor_booking` enables PostgreSQL's `btree_gist` extension and adds exclusion constraints for active tutor and learner time ranges. The migration role must be able to enable the extension, and existing overlapping active bookings must be reconciled before migration.
 
 - Tutors apply at `/signup/tutor` and manage their profile and weekly availability at `/tutor`. Qualifications are private review notes. Admins approve, reject, or suspend tutors at `/admin/tutors`. Approved profiles with active tutor memberships appear at `/tutors`. A profile edit returns it to review.
-- Guardians register at `/signup/student`, create learner profiles at `/student`, and book published tutor availability. Learners in this flow are managed by the guardian. Starts appear in the browser's time zone and are stored in UTC.
+- Adult students register at `/signup/student` and book their own lessons at `/student`. Guardians register at `/signup/guardian`, then create and book for linked learners at `/guardian`. Learner profiles created by guardians are managed through the guardian account. Starts appear in the browser's time zone and are stored in UTC.
+- The three desks validate the active account role before loading workspace data. Their login pages are `/login/student`, `/login/guardian`, and `/login/tutor`.
 - The MVP uses 45-minute lessons and offers starts on a 15-minute grid over the next 14 days. Guardians can reschedule or cancel an active lesson before its start. Tutors can see the resulting status and time in their portal.
+
+## Lesson access and progress
+
+Apply migration `0003_lesson_progress` before restarting the API. It links new progress entries to their booking and allows one entry per booking. Older entries can keep a null booking reference.
+
+Tutors add a private HTTPS meeting link to each booking. The API releases the link only to the assigned tutor, enrolled student, or an authorized guardian, from 10 minutes before the scheduled start through 15 minutes after the scheduled end. A reschedule clears the link so the tutor can attach the correct meeting. The meeting provider controls admission and any links already shared.
+
+Tutors mark a lesson completed after it starts, or mark a no-show after the scheduled end. Completion records guardian-visible notes and one progress entry in the same transaction. Guardians can review the results in their lesson history.

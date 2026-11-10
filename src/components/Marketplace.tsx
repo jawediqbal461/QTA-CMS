@@ -1,9 +1,14 @@
 import { createElement, useEffect, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { accountRequest, ApiError, getStoredAdminToken, request } from "../lib/api";
 import { useSEO } from "../hooks/useSEO";
 
-type Role = "TUTOR" | "GUARDIAN";
+type Role = "TUTOR" | "GUARDIAN" | "STUDENT";
+const accountPaths = {
+  TUTOR: { portal: "/tutor", login: "/login/tutor", signup: "/signup/tutor", label: "Teacher" },
+  STUDENT: { portal: "/student", login: "/login/student", signup: "/signup/student", label: "Student" },
+  GUARDIAN: { portal: "/guardian", login: "/login/guardian", signup: "/signup/guardian", label: "Guardian" },
+} as const;
 type Approval = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
 type Slot = { weekday: number; startTime: string; endTime: string };
 type Tutor = {
@@ -18,6 +23,11 @@ type Student = { id: string; fullName: string };
 type Booking = {
   id: string; tutorId: string; scheduledAtUtc: string; durationMinutes: number; status: string;
   student: { fullName: string }; tutor?: { account: { fullName: string } };
+  lessonSession?: { endedAt: string | null; tutorNotes: string | null } | null;
+  progressEntry?: {
+    currentBook: string; currentChapter: string; currentVerse: number | null;
+    tajweedScore: number | null; hifzPercent: string | null;
+  } | null;
 };
 
 const panel = "space-y-4 rounded-xl border border-neutral-700 p-5";
@@ -141,8 +151,7 @@ function ProfileFields({ profile }: { profile?: Profile }) {
 function AccountForm({ role, register, onSession }: { role: Role; register: boolean; onSession: (token: string) => void }) {
   const action = useAction();
   const [params] = useSearchParams();
-  const portal = role === "TUTOR" ? "/tutor" : "/student";
-  const registration = role === "TUTOR" ? "/signup/tutor" : "/signup/student";
+  const paths = accountPaths[role];
   const query = params.toString() ? `?${params.toString()}` : "";
   return <form className={panel} onSubmit={(event) => {
     event.preventDefault();
@@ -151,6 +160,7 @@ function AccountForm({ role, register, onSession }: { role: Role; register: bool
       const data = { email: String(form.get("email")).trim(), password: String(form.get("password")) };
       const payload = register ? {
         ...data, fullName: String(form.get("fullName")).trim(),
+        ...(role === "STUDENT" ? { adult: form.get("adult") === "on" } : {}),
         ...(role === "TUTOR" ? profileData(form) : {}),
       } : data;
       const result = await request<{ token: string; account: { role: string } }>(
@@ -165,58 +175,153 @@ function AccountForm({ role, register, onSession }: { role: Role; register: bool
     <label className="block">Email<input className={input} name="email" type="email" required autoComplete="email" /></label>
     <label className="block">Password<input className={input} name="password" type="password" required minLength={register ? 10 : undefined} autoComplete={register ? "new-password" : "current-password"} /></label>
     {register && role === "TUTOR" && <ProfileFields />}
+    {register && role === "STUDENT" && <label className="flex items-center gap-2">
+      <input type="checkbox" name="adult" required /> I am an adult registering for my own lessons.
+    </label>}
     <ErrorText value={action.error} />
     <div className="flex flex-wrap items-center gap-4">
       <button className={button} disabled={action.busy}>{register ? "Create account" : "Sign in"}</button>
-      <Link className="text-emerald-300 underline" to={(register ? portal : registration) + query}>
+      <Link className="text-emerald-300 underline" to={(register ? paths.login : paths.signup) + query}>
         {register ? "Already registered? Sign in" : "Create an account"}
       </Link>
+      {role !== "TUTOR" && <Link className="text-emerald-300 underline" to={accountPaths[role === "STUDENT" ? "GUARDIAN" : "STUDENT"].login + query}>
+        {role === "STUDENT" ? "Sign in as a guardian" : "Sign in as a student"}
+      </Link>}
+      {register && role === "STUDENT" && <Link className="text-emerald-300 underline" to={accountPaths.GUARDIAN.signup + query}>Register as a guardian</Link>}
     </div>
   </form>;
 }
 
-export function AccountPortal({ role, register = false }: { role: Role; register?: boolean }) {
+export function AccountPortal({ role, register = false, login = false }: { role: Role; register?: boolean; login?: boolean }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const storageKey = `qta_session_${role.toLowerCase()}`;
   const [token, setToken] = useState(() => sessionStorage.getItem(storageKey) ?? "");
-  const session = useResource<{ role: string }>(!register && token ? "/auth/me" : null, token);
-  const title = role === "TUTOR" ? "Tutor portal" : "Guardian and student portal";
-  useSEO({ title: register ? `Register | ${title}` : title, noindex: true });
+  const paths = accountPaths[role];
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const session = useResource<{ role: string }>(!register && !login && token ? "/auth/me" : null, token);
+  const title = `${paths.label} Desk`;
+  useSEO({ title: register ? `${paths.label} registration` : login ? `${paths.label} login` : title, noindex: true });
   const signOut = () => { sessionStorage.removeItem(storageKey); setToken(""); };
 
-  if (register || !token || session?.unauthorized || (session?.data && session.data.role !== role)) {
-    return <Page title={register ? (role === "TUTOR" ? "Become a tutor" : "Create a guardian account") : title}>
-      {session?.unauthorized && <p>Please sign in again.</p>}
+  if (register || login) {
+    return <Page title={register ? `Create a ${paths.label.toLowerCase()} account` : `${paths.label} login`}>
       <AccountForm role={role} register={register} onSession={(value) => {
         sessionStorage.setItem(storageKey, value);
-        setToken(value);
-        if (register) navigate((role === "TUTOR" ? "/tutor" : "/student") + (params.size ? `?${params}` : ""));
+        navigate(paths.portal + query, { replace: true });
       }} />
     </Page>;
+  }
+  if (!token || session?.unauthorized || (session?.data && session.data.role !== role)) {
+    return <Navigate replace to={paths.login + query} />;
   }
   return <Page title={title}>
     <button className="text-emerald-300 underline" onClick={signOut}>Sign out</button>
     <ErrorText value={session?.error} />
     {!session && <p role="status">Checking session…</p>}
-    {session?.data && (role === "TUTOR" ? <TutorWorkspace token={token} /> : <GuardianWorkspace token={token} preferredTutor={params.get("tutor") ?? ""} />)}
+    {session?.data && (role === "TUTOR" ? <TutorWorkspace token={token} /> : <GuardianWorkspace token={token} role={role} preferredTutor={params.get("tutor") ?? ""} />)}
   </Page>;
 }
 
-function BookingList({ bookings }: { bookings: Booking[] }) {
-  return <ul className="space-y-2">
-    {bookings.length === 0 && <li>No lessons booked yet.</li>}
-    {bookings.map((booking) => <li key={booking.id}>
-      {booking.student.fullName}{booking.tutor ? ` with ${booking.tutor.account.fullName}` : ""}
-      {" · "}{localTime(booking.scheduledAtUtc)} · {booking.durationMinutes} min · {booking.status.replaceAll("_", " ")}
-    </li>)}
-  </ul>;
+function LessonDetails({ booking }: { booking: Booking }) {
+  const progress = booking.progressEntry;
+  return <div className="space-y-2">
+    <p>{booking.student.fullName}{booking.tutor ? ` with ${booking.tutor.account.fullName}` : ""}
+      {" · "}{localTime(booking.scheduledAtUtc)} · {booking.durationMinutes} min · {booking.status.replaceAll("_", " ")}</p>
+    {booking.lessonSession?.tutorNotes && <p className="whitespace-pre-wrap">Tutor notes: {booking.lessonSession.tutorNotes}</p>}
+    {progress && <p>
+      Progress: {progress.currentBook} · {progress.currentChapter}
+      {progress.currentVerse != null && ` · Ayah ${progress.currentVerse}`}
+      {progress.tajweedScore != null && ` · Tajweed ${progress.tajweedScore}%`}
+      {progress.hifzPercent != null && ` · Hifz ${progress.hifzPercent}%`}
+    </p>}
+  </div>;
+}
+
+function LessonActions({ booking, token, role, refresh }: {
+  booking: Booking; token: string; role: Role; refresh?: () => void;
+}) {
+  const join = useAction();
+  const saveLink = useAction();
+  const outcome = useAction();
+  const [status, setStatus] = useState("COMPLETED");
+  const [message, setMessage] = useState("");
+  const path = `/${role === "TUTOR" ? "tutor" : "guardian"}/bookings/${booking.id}`;
+  if (!["BOOKED", "RESCHEDULED"].includes(booking.status)) return null;
+  return <div className="space-y-3">
+    <button className={button} type="button" disabled={join.busy} onClick={() => {
+      void join.run(async () => {
+        const { url } = await accountRequest<{ url: string }>(`${path}/meeting`, token);
+        if (new URL(url).protocol !== "https:") throw new Error("Invalid meeting link.");
+        window.location.assign(url);
+      });
+    }}>Join lesson</button>
+    <p className="text-sm text-neutral-400">Meeting access opens 10 minutes before class.</p>
+    <ErrorText value={join.error} />
+    {role === "TUTOR" && <>
+      <details className="rounded border border-neutral-700 p-3">
+        <summary className="cursor-pointer">Set meeting link</summary>
+        <form className="mt-3 space-y-3" onSubmit={(event) => {
+          event.preventDefault();
+          const form = event.currentTarget;
+          const url = new FormData(form).get("url");
+          setMessage("");
+          void saveLink.run(async () => {
+            await accountRequest(`${path}/meeting`, token, "PUT", { url, expectedStart: booking.scheduledAtUtc });
+            form.reset();
+            setMessage("Meeting link saved.");
+          });
+        }}>
+          <label className="block">Private HTTPS meeting URL<input className={input} name="url" type="url" required maxLength={2000} /></label>
+          <ErrorText value={saveLink.error} />
+          <p role="status">{message}</p>
+          <button className={button} disabled={saveLink.busy}>Save link</button>
+        </form>
+      </details>
+      <details className="rounded border border-neutral-700 p-3">
+        <summary className="cursor-pointer">Record attendance and progress</summary>
+        <form className="mt-3 space-y-3" onSubmit={(event) => {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
+          const optionalNumber = (name: string) => form.get(name) ? Number(form.get(name)) : undefined;
+          const progress = status === "COMPLETED" ? {
+            currentBook: form.get("currentBook"), currentChapter: form.get("currentChapter"),
+            currentVerse: optionalNumber("currentVerse"), tajweedScore: optionalNumber("tajweedScore"),
+            hifzPercent: optionalNumber("hifzPercent"),
+          } : undefined;
+          void outcome.run(async () => {
+            await accountRequest(`${path}/outcome`, token, "POST", {
+              status, expectedStart: booking.scheduledAtUtc, notes: form.get("notes"), progress,
+            });
+            refresh?.();
+          });
+        }}>
+          <label className="block">Attendance
+            <select className={input} value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option value="COMPLETED">Attended and completed</option>
+              <option value="NO_SHOW">No-show</option>
+            </select>
+          </label>
+          <label className="block">Lesson notes shared with the guardian<textarea className={input} name="notes" maxLength={2000} /></label>
+          {status === "COMPLETED" && <>
+            <label className="block">Book or program<input className={input} name="currentBook" required maxLength={120} /></label>
+            <label className="block">Surah or chapter<input className={input} name="currentChapter" required maxLength={120} /></label>
+            <label className="block">Ayah (optional)<input className={input} name="currentVerse" type="number" min="1" max="286" /></label>
+            <label className="block">Tajweed score, % (optional)<input className={input} name="tajweedScore" type="number" min="0" max="100" /></label>
+            <label className="block">Hifz progress, % (optional)<input className={input} name="hifzPercent" type="number" min="0" max="100" step="0.01" /></label>
+          </>}
+          <ErrorText value={outcome.error} />
+          <button className={button} disabled={outcome.busy}>Save lesson outcome</button>
+        </form>
+      </details>
+    </>}
+  </div>;
 }
 
 function TutorWorkspace({ token }: { token: string }) {
   const [version, setVersion] = useState(0);
   const profile = useResource<Profile>("/tutor/profile", token, version);
-  const bookings = useResource<Booking[]>("/tutor/bookings", token);
+  const bookings = useResource<Booking[]>("/tutor/bookings", token, version);
   return <>
     <ErrorText value={profile?.error ?? bookings?.error} />
     {!profile && <p role="status">Loading profile…</p>}
@@ -226,7 +331,11 @@ function TutorWorkspace({ token }: { token: string }) {
     })}
     <section className={panel}>
       <h2 className="text-xl font-semibold">Your lessons</h2>
-      {bookings?.data && <BookingList bookings={bookings.data} />}
+      {bookings?.data?.length === 0 && <p>No lessons booked yet.</p>}
+      {bookings?.data?.map((booking) => <article className={panel} key={booking.id}>
+        <LessonDetails booking={booking} />
+        <LessonActions booking={booking} token={token} role="TUTOR" refresh={() => setVersion((value) => value + 1)} />
+      </article>)}
     </section>
   </>;
 }
@@ -283,7 +392,7 @@ function TutorEditor({ profile, token, refresh }: { profile: Profile; token: str
   </>;
 }
 
-function GuardianWorkspace({ token, preferredTutor }: { token: string; preferredTutor: string }) {
+function GuardianWorkspace({ token, role, preferredTutor }: { token: string; role: "GUARDIAN" | "STUDENT"; preferredTutor: string }) {
   const [version, setVersion] = useState(0);
   const [tutorId, setTutorId] = useState(preferredTutor);
   const [reschedule, setReschedule] = useState<Booking>();
@@ -299,7 +408,7 @@ function GuardianWorkspace({ token, preferredTutor }: { token: string; preferred
   const refresh = () => setVersion((value) => value + 1);
 
   return <>
-    <form className={panel} onSubmit={(event) => {
+    {role === "GUARDIAN" && <form className={panel} onSubmit={(event) => {
       event.preventDefault();
       const form = event.currentTarget;
       const fullName = new FormData(form).get("fullName");
@@ -314,7 +423,7 @@ function GuardianWorkspace({ token, preferredTutor }: { token: string; preferred
       {students?.data?.map((student) => <p key={student.id}>{student.fullName}</p>)}
       <label className="block">Learner name<input className={input} name="fullName" required minLength={2} maxLength={120} /></label>
       <button className={button} disabled={learnerAction.busy}>Add learner</button>
-    </form>
+    </form>}
     <form className={panel} key={reschedule?.id ?? "new"} onSubmit={(event) => {
       event.preventDefault();
       const data = new FormData(event.currentTarget);
@@ -327,7 +436,8 @@ function GuardianWorkspace({ token, preferredTutor }: { token: string; preferred
             });
             setReschedule(undefined);
           } else {
-            const studentId = String(data.get("studentId"));
+            const studentId = role === "STUDENT" ? students?.data?.[0]?.id : String(data.get("studentId"));
+            if (!studentId) throw new Error("Select a learner before booking.");
             const key = JSON.stringify([studentId, tutorId, scheduledAtUtc]);
             const id = attempt?.key === key ? attempt.id : crypto.randomUUID();
             setAttempt({ key, id });
@@ -342,10 +452,10 @@ function GuardianWorkspace({ token, preferredTutor }: { token: string; preferred
         <p>{reschedule.student.fullName} · {reschedule.tutor?.account.fullName}</p>
       ) : (
         <>
-          <label className="block">Learner<select className={input} name="studentId" required defaultValue="">
+          {role === "GUARDIAN" && <label className="block">Learner<select className={input} name="studentId" required defaultValue="">
             <option value="">Choose a learner</option>
             {students?.data?.map((student) => <option key={student.id} value={student.id}>{student.fullName}</option>)}
-          </select></label>
+          </select></label>}
           <label className="block">Tutor<select className={input} value={tutorId} onChange={(event) => setTutorId(event.target.value)} required>
             <option value="">Choose a tutor</option>
             {tutors?.data?.map((tutor) => <option key={tutor.accountId} value={tutor.accountId}>{tutor.account.fullName}</option>)}
@@ -358,9 +468,9 @@ function GuardianWorkspace({ token, preferredTutor }: { token: string; preferred
           {slots?.data?.map((slot) => <option key={slot} value={slot}>{localTime(slot)}</option>)}
         </select>
       </label>
-      <ErrorText value={bookingAction.error ?? slots?.error ?? tutors?.error} />
+      <ErrorText value={bookingAction.error ?? slots?.error ?? tutors?.error ?? students?.error} />
       <div className="flex gap-4">
-        <button className={button} disabled={bookingAction.busy || !slots?.data?.length}>{reschedule ? "Save new time" : "Confirm booking"}</button>
+        <button className={button} disabled={bookingAction.busy || !slots?.data?.length || (!reschedule && !students?.data?.length)}>{reschedule ? "Save new time" : "Confirm booking"}</button>
         {reschedule && <button type="button" className="text-emerald-300 underline" onClick={() => setReschedule(undefined)}>Keep original time</button>}
       </div>
     </form>
@@ -370,7 +480,8 @@ function GuardianWorkspace({ token, preferredTutor }: { token: string; preferred
       {bookings?.data?.length === 0 && <p>No lessons booked yet.</p>}
       {bookings?.data?.map((booking) => (
         <div className="space-y-2 border-t border-neutral-700 pt-3" key={booking.id}>
-          <BookingList bookings={[booking]} />
+          <LessonDetails booking={booking} />
+          <LessonActions booking={booking} token={token} role={role} />
           {["BOOKED", "RESCHEDULED"].includes(booking.status) && new Date(booking.scheduledAtUtc).getTime() > Date.now() && (
             <div className="flex gap-4">
               <button className="text-emerald-300 underline" disabled={bookingAction.busy} onClick={() => setReschedule(booking)}>Reschedule</button>

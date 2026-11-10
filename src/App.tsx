@@ -53,6 +53,7 @@ export default function App() {
   const [activeLessonInClassroom, setActiveLessonInClassroom] = useState<Lesson | null>(null);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+  const [deskMenuOpen, setDeskMenuOpen] = useState(false);
   const [isAnnouncementVisible, setIsAnnouncementVisible] = useState<boolean>(true);
 
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => getStoredAdminToken() !== null);
@@ -396,24 +397,34 @@ export default function App() {
               <span>Blogs</span>
             </button>
 
-            {/* HOVER DROPDOWN: COMBINED STUDENT & TEACHER LOGIN */}
-            <div className="relative group py-1">
+            <div className="relative py-1"
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) setDeskMenuOpen(false);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && deskMenuOpen) {
+                  setDeskMenuOpen(false);
+                  event.currentTarget.querySelector("button")?.focus();
+                }
+              }}
+            >
               <button
+                type="button"
+                aria-expanded={deskMenuOpen}
+                aria-controls="desktop-login-desks"
+                onClick={() => setDeskMenuOpen((open) => !open)}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                  isPath("/student") || isPath("/tutor")
+                  isPath("/student") || isPath("/tutor") || isPath("/guardian") || isPathPrefix("/login")
                     ? "bg-emerald-600 text-neutral-950 shadow-md shadow-emerald-500/10"
                     : "text-neutral-400 hover:text-white hover:bg-white/5"
                 }`}
               >
                 <LogIn size={14} />
                 <span>Login Desks</span>
-                <ChevronDown size={12} className="opacity-60 transition-transform duration-200 group-hover:rotate-180" />
+                <ChevronDown size={12} className={`opacity-60 transition-transform duration-200 ${deskMenuOpen ? "rotate-180" : ""}`} />
               </button>
 
-              {/* Hover Dropdown Panel. pt-1.5 (padding, not a margin gap) keeps
-                  this flush against the trigger so the mouse never leaves a
-                  hoverable area while moving down into it. */}
-              <div className="absolute right-0 top-full hidden group-hover:block pt-1.5 min-w-[220px] z-50">
+              <div id="desktop-login-desks" hidden={!deskMenuOpen} className="absolute right-0 top-full pt-1.5 min-w-[220px] z-50">
               <div className="bg-neutral-900/95 border border-neutral-800 rounded-2xl shadow-2xl p-2 backdrop-blur-xl animate-fade-in-up">
                 <div className="px-3 py-1.5 text-[9px] font-extrabold text-neutral-500 uppercase tracking-wider font-mono border-b border-neutral-850 mb-1">
                   Access Portal Accounts
@@ -422,6 +433,7 @@ export default function App() {
                 {/* Student Desk Option */}
                 <button
                   onClick={() => {
+                    setDeskMenuOpen(false);
                     navigate("/student");
                   }}
                   className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex items-start space-x-2.5 cursor-pointer ${
@@ -440,6 +452,7 @@ export default function App() {
                 {/* Teacher / Tutor Portal Option */}
                 <button
                   onClick={() => {
+                    setDeskMenuOpen(false);
                     navigate("/tutor");
                   }}
                   className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex items-start space-x-2.5 mt-1 cursor-pointer ${
@@ -450,9 +463,16 @@ export default function App() {
                 >
                   <GraduationCap size={15} className="mt-0.5 text-emerald-400 shrink-0" />
                   <div className="flex flex-col">
-                    <span>Teacher Portal</span>
+                    <span>Teacher Desk</span>
                     <span className="text-[9px] font-normal text-neutral-500 font-mono -mt-0.5">Manage classes & reviews</span>
                   </div>
+                </button>
+                <button type="button"
+                  onClick={() => { setDeskMenuOpen(false); navigate("/guardian"); }}
+                  className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-bold text-neutral-300 hover:bg-neutral-800 hover:text-white"
+                >
+                  <Users size={15} className="text-amber-400" />
+                  Guardian Desk
                 </button>
               </div>
               </div>
@@ -796,9 +816,14 @@ export default function App() {
               React.createElement(Route, { key: path, path, element: <LegacyBlog /> })
             )}
 
-            <Route path="/signup/student" element={React.createElement(AccountPortal, { key: "guardian-signup", role: "GUARDIAN", register: true })} />
+            <Route path="/signup/student" element={React.createElement(AccountPortal, { key: "student-signup", role: "STUDENT", register: true })} />
+            <Route path="/signup/guardian" element={React.createElement(AccountPortal, { key: "guardian-signup", role: "GUARDIAN", register: true })} />
             <Route path="/signup/tutor" element={React.createElement(AccountPortal, { key: "tutor-signup", role: "TUTOR", register: true })} />
-            <Route path="/student" element={React.createElement(AccountPortal, { key: "guardian", role: "GUARDIAN" })} />
+            <Route path="/login/student" element={React.createElement(AccountPortal, { key: "student-login", role: "STUDENT", login: true })} />
+            <Route path="/login/guardian" element={React.createElement(AccountPortal, { key: "guardian-login", role: "GUARDIAN", login: true })} />
+            <Route path="/login/tutor" element={React.createElement(AccountPortal, { key: "tutor-login", role: "TUTOR", login: true })} />
+            <Route path="/student" element={React.createElement(AccountPortal, { key: "student", role: "STUDENT" })} />
+            <Route path="/guardian" element={React.createElement(AccountPortal, { key: "guardian", role: "GUARDIAN" })} />
             <Route path="/tutor" element={React.createElement(AccountPortal, { key: "tutor", role: "TUTOR" })} />
             <Route path="/admin/tutors" element={<TutorReview />} />
 

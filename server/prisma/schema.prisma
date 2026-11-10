@@ -163,6 +163,7 @@ model Booking {
   updatedAt       DateTime      @updatedAt
 
   lessonSession LessonSession?
+  progressEntry ProgressEntry?
 
   @@index([studentId, scheduledAtUtc])
   @@map("bookings")
@@ -182,6 +183,8 @@ model LessonSession {
 
 model ProgressEntry {
   id               String   @id @default(uuid())
+  bookingId        String?  @unique
+  booking          Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
   studentId        String
   student          Account  @relation("ProgressOfStudent", fields: [studentId], references: [id], onDelete: Cascade)
   recordedById     String

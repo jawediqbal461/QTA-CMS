@@ -104,12 +104,17 @@ const registerGuardianSchema = z.object({
   email: z.string().trim().email().max(254),
   password: registrationPassword,
   fullName: z.string().trim().min(2).max(120),
+  adult: z.boolean().optional(),
 });
 
-authRouter.post("/register/guardian", asyncHandler(async (req, res) => {
+authRouter.post("/register/:role(guardian|student)", asyncHandler(async (req, res) => {
+  const role = req.params.role === "student" ? "STUDENT" : "GUARDIAN";
   const parsed = registerGuardianSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Enter a valid name, email, and password of at least 10 characters and at most 72 bytes." });
+  }
+  if (role === "STUDENT" && parsed.data.adult !== true) {
+    return res.status(400).json({ error: "Adult learners can register directly. For a minor, create a guardian account." });
   }
   const { email, password, fullName } = parsed.data;
 
@@ -128,7 +133,7 @@ authRouter.post("/register/guardian", asyncHandler(async (req, res) => {
       data: { email: email.toLowerCase(), passwordHash, fullName },
     });
     await tx.academyMembership.create({
-      data: { academyId: academy.id, accountId: acc.id, role: "GUARDIAN" },
+      data: { academyId: academy.id, accountId: acc.id, role },
     });
     return acc;
   });
@@ -136,19 +141,19 @@ authRouter.post("/register/guardian", asyncHandler(async (req, res) => {
   await recordAudit({
     actorId: account.id,
     academyId: academy.id,
-    action: "auth.register.guardian",
+    action: `auth.register.${role.toLowerCase()}`,
     targetType: "account",
     targetId: account.id,
   });
 
-  const token = signSession({ accountId: account.id, academyId: academy.id, role: "GUARDIAN" });
+  const token = signSession({ accountId: account.id, academyId: academy.id, role });
   res.status(201).json({
     token,
     account: {
       id: account.id,
       email: account.email,
       fullName: account.fullName,
-      role: "GUARDIAN",
+      role,
       academy: { id: academy.id, name: academy.name, slug: academy.slug },
     },
   });

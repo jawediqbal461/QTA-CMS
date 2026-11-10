@@ -7,15 +7,16 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { publishedTutorWhere } from "../lib/tutorProfile.js";
 import { availableStarts } from "../lib/availableStarts.js";
+import { canJoinLesson, lessonSummary, meetingWindowMessage } from "../lib/lessonAccess.js";
 import { activeStatuses, availabilityMatcher, BOOKING_HORIZON, LESSON_MINUTES, MINUTE, SLOT_STEP } from "../lib/scheduling.js";
 
 export const guardianRouter = Router();
 
-guardianRouter.use(requireAuth, requireRole("GUARDIAN"));
+guardianRouter.use(requireAuth, requireRole("GUARDIAN", "STUDENT"));
 
-function linkedStudent(guardianId: string, academyId: string): Prisma.AccountWhereInput {
+function linkedStudent(accountId: string, academyId: string, role: string): Prisma.AccountWhereInput {
   return {
-    studentLinks: { some: { guardianId } },
+    ...(role === "STUDENT" ? { id: accountId } : { studentLinks: { some: { guardianId: accountId } } }),
     memberships: { some: { academyId, role: "STUDENT", status: "ACTIVE" } },
   };
 }
@@ -23,13 +24,13 @@ function linkedStudent(guardianId: string, academyId: string): Prisma.AccountWhe
 const studentSelect = { id: true, fullName: true } as const;
 
 guardianRouter.get("/students", asyncHandler(async (req, res) => {
-  const { accountId, academyId } = req.session!;
+  const { accountId, academyId, role } = req.session!;
   res.json(await prisma.account.findMany({
-    where: linkedStudent(accountId, academyId), select: studentSelect, orderBy: { fullName: "asc" },
+    where: linkedStudent(accountId, academyId, role), select: studentSelect, orderBy: { fullName: "asc" },
   }));
 }));
 
-guardianRouter.post("/students", asyncHandler(async (req, res) => {
+guardianRouter.post("/students", requireRole("GUARDIAN"), asyncHandler(async (req, res) => {
   const parsed = z.object({ fullName: z.string().trim().min(2).max(120) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Enter the learner's name." });
   const { accountId, academyId } = req.session!;
@@ -50,21 +51,35 @@ const bookingSelect = {
   id: true, tutorId: true, studentId: true, scheduledAtUtc: true, durationMinutes: true, status: true,
   student: { select: { fullName: true } },
   tutor: { select: { account: { select: { fullName: true } } } },
+  ...lessonSummary,
 } satisfies Prisma.BookingSelect;
 
 guardianRouter.get("/bookings", asyncHandler(async (req, res) => {
-  const { accountId, academyId } = req.session!;
+  const { accountId, academyId, role } = req.session!;
   res.json(await prisma.booking.findMany({
-    where: { academyId, student: linkedStudent(accountId, academyId) },
+    where: { academyId, student: linkedStudent(accountId, academyId, role) },
     select: bookingSelect, orderBy: { scheduledAtUtc: "asc" },
   }));
 }));
 
+guardianRouter.get("/bookings/:id/meeting", asyncHandler(async (req, res) => {
+  const { accountId, academyId, role } = req.session!;
+  const booking = await prisma.booking.findFirst({
+    where: { id: req.params.id, academyId, student: linkedStudent(accountId, academyId, role) },
+    select: { status: true, scheduledAtUtc: true, durationMinutes: true, meetingUrl: true },
+  });
+  res.set("Cache-Control", "no-store");
+  if (!booking) return res.status(404).json({ error: "Lesson not found." });
+  if (!canJoinLesson(booking)) return res.status(409).json({ error: meetingWindowMessage });
+  if (!booking.meetingUrl) return res.status(409).json({ error: "The tutor has not added a meeting link yet." });
+  res.json({ url: booking.meetingUrl });
+}));
+
 guardianRouter.get("/bookings/:id/slots", asyncHandler(async (req, res) => {
-  const { accountId, academyId } = req.session!;
+  const { accountId, academyId, role } = req.session!;
   const booking = await prisma.booking.findFirst({
     where: {
-      id: req.params.id, academyId, student: linkedStudent(accountId, academyId),
+      id: req.params.id, academyId, student: linkedStudent(accountId, academyId, role),
       status: { in: [...activeStatuses] }, scheduledAtUtc: { gt: new Date() },
     },
     select: { id: true, studentId: true, tutorId: true, durationMinutes: true, scheduledAtUtc: true },
@@ -127,11 +142,11 @@ const createSchema = z.object({
 guardianRouter.post("/bookings", asyncHandler(async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Choose a learner, tutor, and time." });
-  const { accountId, academyId } = req.session!;
+  const { accountId, academyId, role } = req.session!;
   const { id, studentId, tutorId, scheduledAtUtc } = parsed.data;
   const start = new Date(scheduledAtUtc);
   await bookingWrite(res, async (tx) => {
-    if (!await tx.account.findFirst({ where: { id: studentId, ...linkedStudent(accountId, academyId) } })) {
+    if (!await tx.account.findFirst({ where: { AND: [{ id: studentId }, linkedStudent(accountId, academyId, role)] } })) {
       throw new BookingError(404, "Learner not found.");
     }
     const previous = await tx.booking.findUnique({ where: { id }, select: { ...bookingSelect, academyId: true } });
@@ -158,10 +173,10 @@ guardianRouter.patch("/bookings/:id", asyncHandler(async (req, res) => {
   const parsed = changeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid booking change." });
   const change = parsed.data;
-  const { accountId, academyId } = req.session!;
+  const { accountId, academyId, role } = req.session!;
   await bookingWrite(res, async (tx) => {
     const booking = await tx.booking.findFirst({
-      where: { id: req.params.id, academyId, student: linkedStudent(accountId, academyId) },
+      where: { id: req.params.id, academyId, student: linkedStudent(accountId, academyId, role) },
       select: bookingSelect,
     });
     if (!booking) throw new BookingError(404, "Booking not found.");
@@ -174,13 +189,13 @@ guardianRouter.patch("/bookings/:id", asyncHandler(async (req, res) => {
       throw new BookingError(409, "This booking can no longer be changed. Refresh your bookings.");
     }
     if (change.action === "cancel") {
-      return tx.booking.update({ where: { id: booking.id }, data: { status: "CANCELLED" }, select: bookingSelect });
+      return tx.booking.update({ where: { id: booking.id }, data: { status: "CANCELLED", meetingUrl: null }, select: bookingSelect });
     }
     const start = new Date(change.scheduledAtUtc);
     if (current === start.getTime()) return booking;
     await validateTime(tx, academyId, booking.tutorId, booking.studentId, start, booking.durationMinutes, booking.id);
     return tx.booking.update({
-      where: { id: booking.id }, data: { scheduledAtUtc: start, status: "RESCHEDULED" }, select: bookingSelect,
+      where: { id: booking.id }, data: { scheduledAtUtc: start, status: "RESCHEDULED", meetingUrl: null }, select: bookingSelect,
     });
   });
 }));
