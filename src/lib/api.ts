@@ -20,7 +20,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
@@ -36,6 +36,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, message);
   }
   return body as T;
+}
+
+export function accountRequest<T>(path: string, token: string, method = "GET", data?: unknown) {
+  return request<T>(path, {
+    method,
+    headers: { Authorization: `Bearer ${token}` },
+    body: data === undefined ? undefined : JSON.stringify(data),
+  });
 }
 
 export function loginAdmin(email: string, password: string) {

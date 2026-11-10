@@ -12,6 +12,42 @@ export const adminRouter = Router();
 // trust an id from the request alone (tenant isolation).
 adminRouter.use(requireAuth, requireRole("ACADEMY_ADMIN", "PLATFORM_ADMIN"));
 
+adminRouter.get("/tutors", asyncHandler(async (req, res) => {
+  res.json(await prisma.tutorProfile.findMany({
+    where: { academyId: req.session!.academyId },
+    include: { account: { select: { fullName: true, email: true } } },
+    orderBy: { updatedAt: "desc" },
+  }));
+}));
+
+const reviewSchema = z.object({
+  status: z.enum(["APPROVED", "REJECTED", "SUSPENDED"]),
+  updatedAt: z.iso.datetime(),
+});
+
+adminRouter.patch("/tutors/:id", asyncHandler(async (req, res) => {
+  const parsed = reviewSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid tutor review." });
+  const { academyId, accountId } = req.session!;
+  const { status, updatedAt } = parsed.data;
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.tutorProfile.updateMany({
+      where: { accountId: req.params.id, academyId, updatedAt: new Date(updatedAt) },
+      data: { approvalStatus: status },
+    });
+    if (!result.count) return false;
+    await tx.auditEvent.create({
+      data: {
+        actorId: accountId, academyId, action: "tutor.reviewed", targetType: "tutor_profile",
+        targetId: req.params.id, metadata: { status },
+      },
+    });
+    return true;
+  });
+  if (!updated) return res.status(409).json({ error: "Profile changed or is unavailable. Reload before reviewing." });
+  res.json({ approvalStatus: status });
+}));
+
 adminRouter.get("/accounts", asyncHandler(async (req, res) => {
   const memberships = await prisma.academyMembership.findMany({
     where: { academyId: req.session!.academyId },

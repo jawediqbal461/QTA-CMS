@@ -118,6 +118,7 @@ model TutorProfile {
   specialties     String[]
   experienceYears Int
   bio             String?
+  qualifications  String?
   hourlyRate      Decimal              @db.Decimal(10, 2)
   languages       String[]
   approvalStatus  TutorApprovalStatus  @default(PENDING)
@@ -144,10 +145,8 @@ model AvailabilitySlot {
   @@map("availability_slots")
 }
 
-// Booking collisions are prevented at the application layer with a
-// serializable transaction (see src/routes/bookings.ts), and this
-// unique constraint is the hard backstop: no tutor can hold two active
-// bookings at the exact same instant.
+// PostgreSQL exclusion constraints in migration 0002 protect active
+// tutor and student intervals, including overlapping starts.
 model Booking {
   id              String        @id @default(uuid())
   academyId       String
@@ -165,7 +164,6 @@ model Booking {
 
   lessonSession LessonSession?
 
-  @@unique([tutorId, scheduledAtUtc])
   @@index([studentId, scheduledAtUtc])
   @@map("bookings")
 }

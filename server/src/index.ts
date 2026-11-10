@@ -1,10 +1,12 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import { Prisma } from "@prisma/client";
 import { authRouter } from "./routes/auth.js";
 import { adminRouter } from "./routes/admin.js";
 import { tutorRouter } from "./routes/tutor.js";
 import { guardianRouter } from "./routes/guardian.js";
+import { directoryRouter } from "./routes/directory.js";
 import { prisma } from "./lib/prisma.js";
 import { asyncHandler } from "./lib/asyncHandler.js";
 
@@ -41,6 +43,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/tutor", tutorRouter);
 app.use("/api/guardian", guardianRouter);
+app.use("/api/tutors", directoryRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
@@ -48,6 +51,9 @@ app.use((req, res) => {
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+    return res.status(409).json({ error: "A record with those details already exists." });
+  }
   console.error(err);
   res.status(500).json({ error: "Internal server error" });
 });

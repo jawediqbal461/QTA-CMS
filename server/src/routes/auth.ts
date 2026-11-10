@@ -6,10 +6,12 @@ import { signSession } from "../lib/jwt.js";
 import { recordAudit } from "../lib/audit.js";
 import { requireAuth } from "../middleware/auth.js";
 import { asyncHandler } from "../lib/asyncHandler.js";
+import { tutorFields } from "../lib/tutorProfile.js";
 
 export const authRouter = Router();
 
 const BCRYPT_ROUNDS = 12;
+const registrationPassword = z.string().min(10).refine((value) => Buffer.byteLength(value, "utf8") <= 72);
 
 // One-time setup: creates the first academy and its admin account.
 // Protected by SETUP_TOKEN (set in .env, rotate/remove after first use)
@@ -95,19 +97,19 @@ authRouter.post("/bootstrap-academy", asyncHandler(async (req, res) => {
 // academy. Revisit once Phase 3 (multi-academy SaaS) needs a real
 // academy-selection step.
 async function getDefaultAcademy() {
-  return prisma.academy.findFirst({ orderBy: { createdAt: "asc" } });
+  return prisma.academy.findFirst({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
 }
 
 const registerGuardianSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(10),
-  fullName: z.string().min(2),
+  email: z.string().trim().email().max(254),
+  password: registrationPassword,
+  fullName: z.string().trim().min(2).max(120),
 });
 
 authRouter.post("/register/guardian", asyncHandler(async (req, res) => {
   const parsed = registerGuardianSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() });
+    return res.status(400).json({ error: "Enter a valid name, email, and password of at least 10 characters and at most 72 bytes." });
   }
   const { email, password, fullName } = parsed.data;
 
@@ -152,21 +154,16 @@ authRouter.post("/register/guardian", asyncHandler(async (req, res) => {
   });
 }));
 
-const registerTutorSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(10),
-  fullName: z.string().min(2),
-  bio: z.string().max(2000).optional(),
-  experienceYears: z.number().int().min(0).max(80),
-  hourlyRate: z.number().positive(),
-  languages: z.array(z.string().min(1)).min(1),
-  specialties: z.array(z.string().min(1)).min(1),
+const registerTutorSchema = tutorFields.extend({
+  email: z.string().trim().email().max(254),
+  password: registrationPassword,
+  fullName: z.string().trim().min(2).max(120),
 });
 
 authRouter.post("/register/tutor", asyncHandler(async (req, res) => {
   const parsed = registerTutorSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() });
+    return res.status(400).json({ error: "Check your email, name, profile fields, and password. Passwords must be at least 10 characters and at most 72 bytes." });
   }
   const data = parsed.data;
 
@@ -187,9 +184,6 @@ authRouter.post("/register/tutor", asyncHandler(async (req, res) => {
     await tx.academyMembership.create({
       data: { academyId: academy.id, accountId: acc.id, role: "TUTOR" },
     });
-    // Starts PENDING — an admin must approve before the tutor is public.
-    // That approval workflow itself is out of scope here (Phase 1 backlog
-    // item M02), this just makes sure the flag exists from day one.
     await tx.tutorProfile.create({
       data: {
         accountId: acc.id,
@@ -197,6 +191,7 @@ authRouter.post("/register/tutor", asyncHandler(async (req, res) => {
         specialties: data.specialties,
         experienceYears: data.experienceYears,
         bio: data.bio,
+        qualifications: data.qualifications,
         hourlyRate: data.hourlyRate,
         languages: data.languages,
         approvalStatus: "PENDING",

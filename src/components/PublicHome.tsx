@@ -1,3 +1,4 @@
+import { FeaturedTutors } from "./Marketplace";
 import React, { useState } from "react";
 import { 
   BookOpen, Users, Calendar, Award, Star, CheckCircle, ArrowRight, Play, 
@@ -5,19 +6,16 @@ import {
   GraduationCap, DollarSign, Clock, Sparkles, ShieldCheck, Check, 
   BookOpen as BookIcon, Sparkles as SparklesIcon, FileText
 } from "lucide-react";
-import { Tutor, Curriculum, BlogPost, TAJWEED_QUIZ, INITIAL_BLOGS } from "../data/mockData";
+import { Curriculum, BlogPost, TAJWEED_QUIZ, INITIAL_BLOGS } from "../data/mockData";
 import { useSEO } from "../hooks/useSEO";
 
 interface PublicHomeProps {
-  tutors: Tutor[];
   curriculums: Curriculum[];
   onNavigateToPortal: (portal: "tutor" | "student" | "classroom" | "admin") => void;
-  onBookTrial: (tutorId: string) => void;
-  onViewProfile?: (tutorId: string) => void;
   onNavigateToAdmin?: (subTab?: "overview" | "architecture" | "sitemap" | "database" | "curriculum" | "profiles" | "quran_crud" | "blog_crud") => void;
 }
 
-export default function PublicHome({ tutors, curriculums, onNavigateToPortal, onBookTrial, onViewProfile, onNavigateToAdmin }: PublicHomeProps) {
+export default function PublicHome({ curriculums, onNavigateToPortal, onNavigateToAdmin }: PublicHomeProps) {
   useSEO({
     title: "Learn Quran Online with Certified Tajweed Tutors",
     description: "Learn the Holy Quran online with certified Tajweed tutors — live interactive lessons, Hifz memorization tracking, and a free Quran reading & audio companion.",
@@ -247,91 +245,9 @@ export default function PublicHome({ tutors, curriculums, onNavigateToPortal, on
         </div>
       </section>
 
-      {/* 2. CERTIFIED TUTORS DIRECTORY */}
       <section id="certified-tutors" className="space-y-6">
-        <div className="text-center max-w-2xl mx-auto space-y-2">
-          <h2 className="text-3xl font-extrabold text-white tracking-tight">Our Certified Quranic Scholars</h2>
-          <p className="text-xs md:text-sm text-neutral-400 leading-normal">
-            Every tutor possesses verified teaching credentials (Ijazah) and brings years of academic experience from leading institutions like Al-Azhar University.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {tutors.map(t => (
-            <div 
-              key={t.id} 
-              className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-xl hover:border-neutral-700 transition duration-300 flex flex-col justify-between"
-            >
-              <div className="space-y-4">
-                {/* Tutor Profile Header */}
-                <div className="flex items-center space-x-4">
-                  <img src={t.avatar} alt={t.name} className="w-14 h-14 rounded-full object-cover border-2 border-emerald-500/40 shadow-inner" />
-                  <div>
-                    <h3 className="text-base font-bold text-white leading-snug">{t.name}</h3>
-                    <p className="text-[11px] text-neutral-400 flex items-center mt-0.5">
-                      <GraduationCap size={12} className="text-emerald-400 mr-1" />
-                      Experience: {t.experience}
-                    </p>
-                    <div className="flex items-center space-x-1.5 mt-0.5">
-                      <div className="flex items-center text-amber-400">
-                        <Star size={11} className="fill-amber-400" />
-                        <span className="text-xs font-bold ml-1 font-mono">{t.rating}</span>
-                      </div>
-                      <span className="text-neutral-600">•</span>
-                      <span className="text-[11px] text-neutral-400 font-mono">{t.lessonsCompleted} Completed classes</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Specialties tags */}
-                <div className="flex flex-wrap gap-1.5 pt-2">
-                  {t.specialties.map((spec, i) => (
-                    <span 
-                      key={i} 
-                      className="bg-neutral-950 text-emerald-400 border border-emerald-500/10 text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider"
-                    >
-                      {spec}
-                    </span>
-                  ))}
-                </div>
-
-                {/* Profile bio */}
-                <p className="text-xs text-neutral-400 leading-relaxed line-clamp-3">
-                  {t.bio}
-                </p>
-
-                {/* Profile Details Grid */}
-                <div className="bg-neutral-950/60 border border-neutral-850 p-3 rounded-2xl grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-[10px] text-neutral-500 block uppercase font-bold">Languages</span>
-                    <span className="text-neutral-200 font-medium">{t.languages.join(", ")}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-neutral-500 block uppercase font-bold">Hourly Rate</span>
-                    <span className="text-emerald-400 font-extrabold font-mono">${t.hourlyRate.toFixed(2)}/hr</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action buttons */}
-              <div className="pt-5 mt-5 border-t border-neutral-850/60 flex items-center gap-2">
-                <button
-                  onClick={() => onBookTrial(t.id)}
-                  className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-neutral-950 text-xs font-bold py-3 px-4 rounded-xl shadow transition"
-                >
-                  Book Trial Session
-                </button>
-                <button
-                  onClick={() => onViewProfile && onViewProfile(t.id)}
-                  className="bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-semibold py-3 px-4 rounded-xl border border-neutral-700 transition cursor-pointer"
-                  title="View full scholar profile & verified credentials"
-                >
-                  View Profile
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        <h2 className="text-center text-3xl font-extrabold text-white">Find a Quran tutor</h2>
+        <FeaturedTutors />
       </section>
 
       {/* 3. INTERACTIVE TAJWEED SKILL QUIZ SECTION */}
@@ -871,7 +787,7 @@ export default function PublicHome({ tutors, curriculums, onNavigateToPortal, on
               <button
                 onClick={() => {
                   setActiveBlog(null);
-                  onBookTrial("tutor-1");
+                  onNavigateToPortal("student");
                 }}
                 className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-bold text-xs px-5 py-2.5 rounded-xl transition shrink-0"
               >

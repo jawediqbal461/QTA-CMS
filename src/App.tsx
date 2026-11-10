@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, lazy } from "react";
-import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import {
   BookOpen, Users, Calendar, Shield, Play, RotateCcw, Sparkles,
   Layers, ExternalLink, HelpCircle, CheckCircle, Flame, Star,
@@ -10,9 +10,7 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   Tutor, Student, Lesson, Curriculum,
   INITIAL_TUTORS, INITIAL_STUDENTS, INITIAL_LESSONS, INITIAL_CURRICULUM,
-  slugify
 } from "./data/mockData";
-import type { StudentSignUpData, TutorSignUpData } from "./components/SignUp";
 import legacyBlogIndex from "./data/blog-legacy/index.json";
 import { clearStoredAdminToken, getStoredAdminToken } from "./lib/api";
 
@@ -20,18 +18,14 @@ import { clearStoredAdminToken, getStoredAdminToken } from "./lib/api";
 // Everything else is only needed after explicit navigation, so it's
 // code-split into its own chunk to keep the initial bundle smaller.
 import PublicHome from "./components/PublicHome";
+import { AccountPortal, PublicTutors, TutorReview } from "./components/Marketplace";
 const Classroom = lazy(() => import("./components/Classroom"));
-const TutorPortal = lazy(() => import("./components/TutorPortal"));
-const StudentPortal = lazy(() => import("./components/StudentPortal"));
 const AdminCMS = lazy(() => import("./components/AdminCMS"));
 const AdminLogin = lazy(() => import("./components/AdminLogin"));
 const LegacyQuran = lazy(() => import("./components/LegacyQuran"));
-const TutorProfilePage = lazy(() => import("./components/TutorProfilePage"));
-const TutorDirectory = lazy(() => import("./components/TutorDirectory"));
 const BlogsPage = lazy(() => import("./components/BlogsPage"));
 const LegacyBlog = lazy(() => import("./components/LegacyBlog"));
 const BlogPostPage = lazy(() => import("./components/BlogPostPage"));
-const SignUp = lazy(() => import("./components/SignUp"));
 
 // Minimal, theme-matched fallback shown while a lazy-loaded portal chunk downloads.
 function PortalLoadingFallback() {
@@ -45,45 +39,6 @@ function PortalLoadingFallback() {
 // Renders a single tutor's profile at /tutors/:slug, resolved from the live tutors list.
 // Keeping this as its own route (instead of nesting it inside the directory) is what gives
 // every scholar profile a real, shareable, SEO-friendly URL.
-function TutorProfileRoute({
-  tutors,
-  onBookLesson
-}: {
-  tutors: Tutor[];
-  onBookLesson: (tutorId: string, dateTime: string, topic: string) => void;
-}) {
-  const { slug } = useParams<{ slug: string }>();
-  const navigate = useNavigate();
-  const tutor = tutors.find(t => t.slug === slug);
-
-  if (!tutor) {
-    return (
-      <div className="max-w-md mx-auto mt-24 bg-neutral-900 border border-neutral-800 rounded-3xl p-8 text-center space-y-4">
-        <h2 className="text-lg font-bold text-white">Scholar not found</h2>
-        <p className="text-xs text-neutral-400 leading-relaxed">
-          We couldn't find a tutor profile at this address. They may have moved, or the link is out of date.
-        </p>
-        <button
-          onClick={() => navigate("/tutors")}
-          className="bg-emerald-600 hover:bg-emerald-500 text-neutral-950 hover:text-white font-bold text-xs px-5 py-2.5 rounded-xl transition"
-        >
-          Back to Scholars Registry
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <TutorProfilePage
-      tutor={tutor}
-      onBookLesson={onBookLesson}
-      onBack={() => navigate("/tutors")}
-      onNavigateHome={() => navigate("/")}
-      onNavigateTutors={() => navigate("/tutors")}
-    />
-  );
-}
-
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -96,7 +51,6 @@ export default function App() {
 
   const [adminInitialSubTab, setAdminInitialSubTab] = useState<"overview" | "architecture" | "sitemap" | "database" | "curriculum" | "profiles" | "quran_crud" | "blog_crud" | undefined>(undefined);
   const [activeLessonInClassroom, setActiveLessonInClassroom] = useState<Lesson | null>(null);
-  const [preselectedTutorId, setPreselectedTutorId] = useState<string | undefined>(undefined);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isAnnouncementVisible, setIsAnnouncementVisible] = useState<boolean>(true);
@@ -177,62 +131,8 @@ export default function App() {
   // --- STATE MUTATORS ---
 
   // Triggered when student books a lesson
-  const handleBookLesson = (tutorId: string, dateTime: string, topic: string) => {
-    const tutorObj = tutors.find(t => t.id === tutorId);
-    const studentObj = students[0]; // Simulated as student-1 (Zayd Bilal)
-
-    if (!tutorObj || !studentObj) return;
-
-    const newLesson: Lesson = {
-      id: "lesson-" + Date.now(),
-      tutorId: tutorObj.id,
-      tutorName: tutorObj.name,
-      studentId: studentObj.id,
-      studentName: studentObj.name,
-      dateTime,
-      duration: 45,
-      topic,
-      status: "scheduled"
-    };
-
-    const updated = [newLesson, ...lessons];
-    saveLessons(updated);
-  };
-
   // Triggered when tutor schedules a lesson
-  const handleTutorAddLesson = (studentId: string, dateTime: string, topic: string) => {
-    const tutorObj = tutors[0]; // Sheikh Ahmed
-    const studentObj = students.find(s => s.id === studentId);
-
-    if (!tutorObj || !studentObj) return;
-
-    const newLesson: Lesson = {
-      id: "lesson-" + Date.now(),
-      tutorId: tutorObj.id,
-      tutorName: tutorObj.name,
-      studentId: studentObj.id,
-      studentName: studentObj.name,
-      dateTime,
-      duration: 45,
-      topic,
-      status: "scheduled"
-    };
-
-    const updated = [newLesson, ...lessons];
-    saveLessons(updated);
-  };
-
   // Save updated weekly slots
-  const handleSaveAvailability = (newAvailability: { [key: string]: string[] }) => {
-    const updated = tutors.map(t => {
-      if (t.id === "tutor-1") { // Sheikh Ahmed
-        return { ...t, availability: newAvailability };
-      }
-      return t;
-    });
-    saveTutors(updated);
-  };
-
   // Launch live classroom
   const handleJoinClassroom = (lesson: Lesson) => {
     // Force status to "live" if it was scheduled
@@ -344,63 +244,8 @@ export default function App() {
 
   // New student registration — creates a real Student record, saved to local storage
   // like every other piece of app data (this pilot has no backend to send it to).
-  const handleStudentSignUp = (data: StudentSignUpData) => {
-    const newStudent: Student = {
-      id: "student-" + Date.now(),
-      name: data.name,
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=1e3a34&color=34d399&size=128`,
-      level: data.level,
-      age: data.age || 10,
-      timeZone: data.timeZone || "UTC",
-      assignedTutorId: tutors[0]?.id || "",
-      progress: {
-        currentBook: data.currentBook,
-        currentChapter: "Getting Started",
-        currentVerse: 1,
-        juzMemorized: [],
-        surahsCompleted: [],
-        tajweedScore: 70,
-        hifzProgress: 0,
-        attendanceRate: 100,
-        recentMistakes: []
-      }
-    };
-    saveStudents([...students, newStudent]);
-    return { id: newStudent.id };
-  };
-
   // New tutor application — creates a real Tutor record with a unique slug, so the
   // new profile shows up immediately in the Scholars Registry with a real, shareable URL.
-  const handleTutorSignUp = (data: TutorSignUpData) => {
-    const base = slugify(data.name) || "tutor";
-    let slug = base;
-    let counter = 2;
-    while (tutors.some(t => t.slug === slug)) {
-      slug = `${base}-${counter}`;
-      counter++;
-    }
-
-    const newTutor: Tutor = {
-      id: "tutor-" + Date.now(),
-      name: data.name,
-      slug,
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=064e3b&color=6ee7b7&size=200`,
-      specialties: data.specialties,
-      experience: data.experience,
-      rating: 5,
-      studentsCount: 0,
-      lessonsCompleted: 0,
-      bio: data.bio,
-      videoUrl: "",
-      timeZone: data.timeZone || "UTC",
-      languages: data.languages,
-      availability: {},
-      hourlyRate: data.hourlyRate
-    };
-    saveTutors([...tutors, newTutor]);
-    return { id: newTutor.id, slug: newTutor.slug };
-  };
-
   // Reset demo defaults helper
   const handleResetDemoData = () => {
     if (window.confirm("Do you want to restore the tutoring academy database to default seeds? All manual bookings, curriculum changes, and mistake logs will be reset.")) {
@@ -476,7 +321,6 @@ export default function App() {
           <div
             className="flex items-center space-x-3 cursor-pointer group"
             onClick={() => {
-              setPreselectedTutorId(undefined);
               navigate("/");
               setIsMobileMenuOpen(false);
             }}
@@ -500,7 +344,6 @@ export default function App() {
 
             <button
               onClick={() => {
-                setPreselectedTutorId(undefined);
                 navigate("/");
               }}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
@@ -515,7 +358,6 @@ export default function App() {
 
             <button
               onClick={() => {
-                setPreselectedTutorId(undefined);
                 navigate("/tutors");
               }}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
@@ -530,7 +372,6 @@ export default function App() {
 
             <button
               onClick={() => {
-                setPreselectedTutorId(undefined);
                 navigate("/quran");
               }}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
@@ -569,8 +410,11 @@ export default function App() {
                 <ChevronDown size={12} className="opacity-60 transition-transform duration-200 group-hover:rotate-180" />
               </button>
 
-              {/* Hover Dropdown Panel */}
-              <div className="absolute right-0 top-full mt-1.5 hidden group-hover:block bg-neutral-900/95 border border-neutral-800 rounded-2xl shadow-2xl p-2 min-w-[220px] z-50 backdrop-blur-xl animate-fade-in-up">
+              {/* Hover Dropdown Panel. pt-1.5 (padding, not a margin gap) keeps
+                  this flush against the trigger so the mouse never leaves a
+                  hoverable area while moving down into it. */}
+              <div className="absolute right-0 top-full hidden group-hover:block pt-1.5 min-w-[220px] z-50">
+              <div className="bg-neutral-900/95 border border-neutral-800 rounded-2xl shadow-2xl p-2 backdrop-blur-xl animate-fade-in-up">
                 <div className="px-3 py-1.5 text-[9px] font-extrabold text-neutral-500 uppercase tracking-wider font-mono border-b border-neutral-850 mb-1">
                   Access Portal Accounts
                 </div>
@@ -578,7 +422,6 @@ export default function App() {
                 {/* Student Desk Option */}
                 <button
                   onClick={() => {
-                    setPreselectedTutorId(undefined);
                     navigate("/student");
                   }}
                   className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex items-start space-x-2.5 cursor-pointer ${
@@ -597,7 +440,6 @@ export default function App() {
                 {/* Teacher / Tutor Portal Option */}
                 <button
                   onClick={() => {
-                    setPreselectedTutorId(undefined);
                     navigate("/tutor");
                   }}
                   className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex items-start space-x-2.5 mt-1 cursor-pointer ${
@@ -612,6 +454,7 @@ export default function App() {
                     <span className="text-[9px] font-normal text-neutral-500 font-mono -mt-0.5">Manage classes & reviews</span>
                   </div>
                 </button>
+              </div>
               </div>
             </div>
 
@@ -629,7 +472,8 @@ export default function App() {
                 <ChevronDown size={12} className="opacity-60 transition-transform duration-200 group-hover:rotate-180" />
               </button>
 
-              <div className="absolute right-0 top-full mt-1.5 hidden group-hover:block bg-neutral-900/95 border border-neutral-800 rounded-2xl shadow-2xl p-2 min-w-[220px] z-50 backdrop-blur-xl animate-fade-in-up">
+              <div className="absolute right-0 top-full hidden group-hover:block pt-1.5 min-w-[220px] z-50">
+              <div className="bg-neutral-900/95 border border-neutral-800 rounded-2xl shadow-2xl p-2 backdrop-blur-xl animate-fade-in-up">
                 <div className="px-3 py-1.5 text-[9px] font-extrabold text-neutral-500 uppercase tracking-wider font-mono border-b border-neutral-850 mb-1">
                   Join the Academy
                 </div>
@@ -663,6 +507,7 @@ export default function App() {
                     <span className="text-[9px] font-normal text-neutral-500 font-mono -mt-0.5">Apply to teach with us</span>
                   </div>
                 </button>
+              </div>
               </div>
             </div>
 
@@ -737,7 +582,6 @@ export default function App() {
 
                 <button
                   onClick={() => {
-                    setPreselectedTutorId(undefined);
                     navigate("/");
                     setIsMobileMenuOpen(false);
                   }}
@@ -753,7 +597,6 @@ export default function App() {
 
                 <button
                   onClick={() => {
-                    setPreselectedTutorId(undefined);
                     navigate("/tutors");
                     setIsMobileMenuOpen(false);
                   }}
@@ -769,7 +612,6 @@ export default function App() {
 
                 <button
                   onClick={() => {
-                    setPreselectedTutorId(undefined);
                     navigate("/quran");
                     setIsMobileMenuOpen(false);
                   }}
@@ -833,7 +675,6 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => {
-                      setPreselectedTutorId(undefined);
                       navigate("/student");
                       setIsMobileMenuOpen(false);
                     }}
@@ -849,7 +690,6 @@ export default function App() {
 
                   <button
                     onClick={() => {
-                      setPreselectedTutorId(undefined);
                       navigate("/tutor");
                       setIsMobileMenuOpen(false);
                     }}
@@ -933,20 +773,10 @@ export default function App() {
             {/* Public Landing Page */}
             <Route path="/" element={
               <PublicHome
-                tutors={tutors}
                 curriculums={curriculums}
                 onNavigateToPortal={(portal) => {
-                  setPreselectedTutorId(undefined);
                   const path = portal === "tutor" ? "/tutor" : portal === "student" ? "/student" : portal === "classroom" ? "/classroom" : "/admin";
                   navigate(path);
-                }}
-                onBookTrial={(tutorId) => {
-                  setPreselectedTutorId(tutorId);
-                  navigate("/student");
-                }}
-                onViewProfile={(tutorId) => {
-                  const t = tutors.find(x => x.id === tutorId);
-                  if (t) navigate(`/tutors/${t.slug}`);
                 }}
                 onNavigateToAdmin={(subTab) => {
                   setAdminInitialSubTab(subTab);
@@ -955,21 +785,8 @@ export default function App() {
               />
             } />
 
-            {/* Find a Tutor Directory — real, filterable, shareable URL */}
-            <Route path="/tutors" element={
-              <TutorDirectory
-                tutors={tutors}
-                onBookTrial={(tutorId) => {
-                  setPreselectedTutorId(tutorId);
-                  navigate("/student");
-                }}
-              />
-            } />
-
-            {/* Individual Tutor Profile — SEO-friendly per-scholar URL, e.g. /tutors/ahmed-al-misri */}
-            <Route path="/tutors/:slug" element={
-              <TutorProfileRoute tutors={tutors} onBookLesson={handleBookLesson} />
-            } />
+            <Route path="/tutors" element={<PublicTutors />} />
+            <Route path="/tutors/:slug" element={<PublicTutors />} />
 
             {/* Academy Insights — blog listing and individual real, SEO-friendly article URLs */}
             <Route path="/blogs" element={<BlogsPage />} />
@@ -979,43 +796,11 @@ export default function App() {
               React.createElement(Route, { key: path, path, element: <LegacyBlog /> })
             )}
 
-            {/* Sign Up — real student & tutor registration */}
-            <Route path="/signup/student" element={
-              <SignUp role="student" onSubmitStudent={handleStudentSignUp} onSubmitTutor={handleTutorSignUp} />
-            } />
-            <Route path="/signup/tutor" element={
-              <SignUp role="tutor" onSubmitStudent={handleStudentSignUp} onSubmitTutor={handleTutorSignUp} />
-            } />
-
-            {/* Tutor Portal */}
-            <Route path="/tutor" element={
-              tutors.length > 0 ? (
-                <TutorPortal
-                  tutor={tutors[0]} // Sheikh Ahmed
-                  students={students}
-                  lessons={lessons}
-                  onJoinClass={handleJoinClassroom}
-                  onSaveAvailability={handleSaveAvailability}
-                  onAddLesson={handleTutorAddLesson}
-                  onNavigateHome={() => navigate("/")}
-                />
-              ) : null
-            } />
-
-            {/* Student Portal */}
-            <Route path="/student" element={
-              students.length > 0 ? (
-                <StudentPortal
-                  student={students[0]} // Zayd Bilal
-                  tutors={tutors}
-                  lessons={lessons}
-                  onJoinClass={handleJoinClassroom}
-                  onBookLesson={handleBookLesson}
-                  initialTutorId={preselectedTutorId}
-                  onNavigateHome={() => navigate("/")}
-                />
-              ) : null
-            } />
+            <Route path="/signup/student" element={React.createElement(AccountPortal, { key: "guardian-signup", role: "GUARDIAN", register: true })} />
+            <Route path="/signup/tutor" element={React.createElement(AccountPortal, { key: "tutor-signup", role: "TUTOR", register: true })} />
+            <Route path="/student" element={React.createElement(AccountPortal, { key: "guardian", role: "GUARDIAN" })} />
+            <Route path="/tutor" element={React.createElement(AccountPortal, { key: "tutor", role: "TUTOR" })} />
+            <Route path="/admin/tutors" element={<TutorReview />} />
 
             {/* Live Classroom Simulator */}
             <Route path="/classroom" element={
@@ -1035,9 +820,9 @@ export default function App() {
                   <div className="w-14 h-14 rounded-full bg-neutral-800 flex items-center justify-center text-emerald-400 mx-auto">
                     <Play size={24} />
                   </div>
-                  <h2 className="text-lg font-bold text-white">No active classroom joined</h2>
+                  <h2 className="text-lg font-bold text-white">Classroom demo</h2>
                   <p className="text-xs text-neutral-400 leading-relaxed">
-                    Go to the 👨‍🏫 <strong>Tutor Portal</strong> or 👶 <strong>Student Desk</strong> first, and click "Launch Classroom" on any scheduled lesson to connect with zero-latency audio and synced whiteboard tools!
+                    Explore the classroom controls with a sample lesson.
                   </p>
                   <button
                     onClick={() => {
@@ -1055,19 +840,24 @@ export default function App() {
             {/* Admin CMS and database layout */}
             <Route path="/admin" element={
               isAdminAuthenticated ? (
-                <AdminCMS
-                  curriculums={curriculums}
-                  tutors={tutors}
-                  onAddCurriculum={handleAddCurriculum}
-                  onDeleteCurriculum={handleDeleteCurriculum}
-                  onUpdateTutorProfile={handleUpdateTutorProfile}
-                  initialSubTab={adminInitialSubTab}
-                  onLogout={() => {
-                    clearStoredAdminToken();
-                    setIsAdminAuthenticated(false);
-                  }}
-                  onNavigateHome={() => navigate("/")}
-                />
+                <>
+                  <div className="mx-auto max-w-5xl px-4 pt-4">
+                    <button className="text-emerald-300 underline" onClick={() => navigate("/admin/tutors")}>Review tutor applications</button>
+                  </div>
+                  <AdminCMS
+                    curriculums={curriculums}
+                    tutors={tutors}
+                    onAddCurriculum={handleAddCurriculum}
+                    onDeleteCurriculum={handleDeleteCurriculum}
+                    onUpdateTutorProfile={handleUpdateTutorProfile}
+                    initialSubTab={adminInitialSubTab}
+                    onLogout={() => {
+                      clearStoredAdminToken();
+                      setIsAdminAuthenticated(false);
+                    }}
+                    onNavigateHome={() => navigate("/")}
+                  />
+                </>
               ) : (
                 <AdminLogin
                   onLoginSuccess={() => setIsAdminAuthenticated(true)}

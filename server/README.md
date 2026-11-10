@@ -174,3 +174,10 @@ npx prisma migrate deploy   # only applies new migrations, safe to always run
 npm run build
 npx pm2 restart qta-api
 ```
+## Tutor onboarding and guardian booking
+
+After updating the server, run `npm run prisma:generate`, `npm run build`, and `npm run prisma:migrate` before restarting the API. Migration `0002_tutor_booking` enables PostgreSQL's `btree_gist` extension and adds exclusion constraints for active tutor and learner time ranges. The migration role must be able to enable the extension, and existing overlapping active bookings must be reconciled before migration.
+
+- Tutors apply at `/signup/tutor` and manage their profile and weekly availability at `/tutor`. Qualifications are private review notes. Admins approve, reject, or suspend tutors at `/admin/tutors`. Approved profiles with active tutor memberships appear at `/tutors`. A profile edit returns it to review.
+- Guardians register at `/signup/student`, create learner profiles at `/student`, and book published tutor availability. Learners in this flow are managed by the guardian. Starts appear in the browser's time zone and are stored in UTC.
+- The MVP uses 45-minute lessons and offers starts on a 15-minute grid over the next 14 days. Guardians can reschedule or cancel an active lesson before its start. Tutors can see the resulting status and time in their portal.
