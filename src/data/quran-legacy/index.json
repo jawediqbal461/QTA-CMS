@@ -1,0 +1,572 @@
+[
+  {
+    "slug": "surah-al-fatihah",
+    "title": "Surah Al Fatihah - سورة الفاتحة",
+    "number": 1
+  },
+  {
+    "slug": "surah-al-baqarah",
+    "title": "Surah Al Baqarah - سورة البقرة",
+    "number": 2
+  },
+  {
+    "slug": "surah-al-imran",
+    "title": "Surah Al Imran - سورة آل عمران",
+    "number": 3
+  },
+  {
+    "slug": "surah-an-nisa",
+    "title": "Surah An Nisa - سورة النساء",
+    "number": 4
+  },
+  {
+    "slug": "surah-al-maidah",
+    "title": "Surah Al Maidah - سورة المائدة",
+    "number": 5
+  },
+  {
+    "slug": "surah-al-anam",
+    "title": "Surah Al Anam - سورة الانعام",
+    "number": 6
+  },
+  {
+    "slug": "surah-al-araf",
+    "title": "Surah Al Araf - سورة الأعراف",
+    "number": 7
+  },
+  {
+    "slug": "surah-al-anfal",
+    "title": "Surah Al Anfal - سورة الانفال",
+    "number": 8
+  },
+  {
+    "slug": "surah-at-taubah",
+    "title": "Surah At Taubah - سورة التوبة",
+    "number": 9
+  },
+  {
+    "slug": "surah-yunus",
+    "title": "Surah Yunus - سورة يونس",
+    "number": 10
+  },
+  {
+    "slug": "surah-hud",
+    "title": "Surah Hud - سورة هود",
+    "number": 11
+  },
+  {
+    "slug": "surah-yusuf",
+    "title": "Surah Yusuf - سورة يوسف",
+    "number": 12
+  },
+  {
+    "slug": "surah-ar-rad",
+    "title": "Surah Ar Rad - سورة الر عد",
+    "number": 13
+  },
+  {
+    "slug": "surah-ibrahim",
+    "title": "Surah Ibrahim - سورة ابراهيم",
+    "number": 14
+  },
+  {
+    "slug": "surah-al-hijr",
+    "title": "Surah Al Hijr - سورة الحجر",
+    "number": 15
+  },
+  {
+    "slug": "surah-an-nahl",
+    "title": "Surah An Nahl - سورة النحل",
+    "number": 16
+  },
+  {
+    "slug": "surah-al-isra",
+    "title": "Surah Al Isra - سورة الإسراء",
+    "number": 17
+  },
+  {
+    "slug": "surah-al-kahf",
+    "title": "Surah Al Kahf - سورة الكهف",
+    "number": 18
+  },
+  {
+    "slug": "surah-maryam",
+    "title": "Surah Maryam - سورة مريم",
+    "number": 19
+  },
+  {
+    "slug": "surah-taha",
+    "title": "Surah Taha - سورة طه",
+    "number": 20
+  },
+  {
+    "slug": "surah-al-anbiya",
+    "title": "Surah Al Anbiya - سورة الأنبياء",
+    "number": 21
+  },
+  {
+    "slug": "surah-al-hajj",
+    "title": "Surah Al Hajj - سورة الحج",
+    "number": 22
+  },
+  {
+    "slug": "surah-al-muminun",
+    "title": "Surah Al Muminun - سورة المؤمنون",
+    "number": 23
+  },
+  {
+    "slug": "surah-an-nur",
+    "title": "Surah An Nur - سورة النور",
+    "number": 24
+  },
+  {
+    "slug": "surah-al-furqan",
+    "title": "Surah Al Furqan - سورة الفرقان",
+    "number": 25
+  },
+  {
+    "slug": "surah-ash-shuara",
+    "title": "Surah Ash Shuara - سورة الشعراء",
+    "number": 26
+  },
+  {
+    "slug": "surah-an-naml",
+    "title": "Surah An Naml - سورة النمل",
+    "number": 27
+  },
+  {
+    "slug": "surah-al-qasas",
+    "title": "Surah Al Qasas - سورة القصص",
+    "number": 28
+  },
+  {
+    "slug": "surah-al-ankabut",
+    "title": "Surah Al Ankabut - سورة العنكبوت",
+    "number": 29
+  },
+  {
+    "slug": "surah-ar-rum",
+    "title": "Surah Ar Rum - سورة الروم",
+    "number": 30
+  },
+  {
+    "slug": "surah-luqman",
+    "title": "Surah Luqman - سورة لقمان",
+    "number": 31
+  },
+  {
+    "slug": "surah-as-sajdah",
+    "title": "Surah As Sajdah - سورة السجدة",
+    "number": 32
+  },
+  {
+    "slug": "surah-al-ahzab",
+    "title": "Surah Al Ahzab - سورة الأحزاب",
+    "number": 33
+  },
+  {
+    "slug": "surah-saba",
+    "title": "Surah Saba - سورة سبأ",
+    "number": 34
+  },
+  {
+    "slug": "surah-fatir",
+    "title": "Surah Fatir - سورة فاطر",
+    "number": 35
+  },
+  {
+    "slug": "surah-yaseen",
+    "title": "Surah Yaseen - سورة ياسين",
+    "number": 36
+  },
+  {
+    "slug": "surah-as-saffat",
+    "title": "Surah As Saffat - سورة الصافات",
+    "number": 37
+  },
+  {
+    "slug": "surah-sad",
+    "title": "Surah Sad - سورة ص",
+    "number": 38
+  },
+  {
+    "slug": "surah-az-zumar",
+    "title": "Surah Az Zumar - سورة الزمر",
+    "number": 39
+  },
+  {
+    "slug": "surah-ghafir",
+    "title": "Surah Ghafir - سورة غافر",
+    "number": 40
+  },
+  {
+    "slug": "surah-fussilat",
+    "title": "Surah Fussilat - سورة فصلت",
+    "number": 41
+  },
+  {
+    "slug": "surah-ash-shura",
+    "title": "Surah Ash Shura - سورة الشورى",
+    "number": 42
+  },
+  {
+    "slug": "surah-az-zukhruf",
+    "title": "Surah Az Zukhruf - سورة الزخرف",
+    "number": 43
+  },
+  {
+    "slug": "surah-ad-dukhan",
+    "title": "Surah Ad Dukhan - سورة الدخان",
+    "number": 44
+  },
+  {
+    "slug": "surah-al-jasia",
+    "title": "Surah Al Jasia - سورة الجاثية",
+    "number": 45
+  },
+  {
+    "slug": "surah-al-ahqaf",
+    "title": "Surah Al Ahqaf - سورة الاحقاف",
+    "number": 46
+  },
+  {
+    "slug": "surah-muhammad",
+    "title": "Surah Muhammad - سورة محمد",
+    "number": 47
+  },
+  {
+    "slug": "surah-al-fath",
+    "title": "Surah Al Fath- سورة الفتح",
+    "number": 48
+  },
+  {
+    "slug": "surah-al-hujurat",
+    "title": "Surah Al Hujurat - سورة الحجرات",
+    "number": 49
+  },
+  {
+    "slug": "surah-qaf",
+    "title": "Surah Qaf - سورة ق",
+    "number": 50
+  },
+  {
+    "slug": "surah-az-zariyat",
+    "title": "Surah Az Zariyat - سورة الزاريات",
+    "number": 51
+  },
+  {
+    "slug": "surah-at-tur",
+    "title": "Surah At Tur - سورة الطور",
+    "number": 52
+  },
+  {
+    "slug": "surah-an-najm",
+    "title": "Surah An Najm - سورة النجم",
+    "number": 53
+  },
+  {
+    "slug": "surah-al-qamar",
+    "title": "Surah Al Qamar - سورة القمر",
+    "number": 54
+  },
+  {
+    "slug": "surah-ar-rahman",
+    "title": "Surah Ar Rahman - سورة الرحمن",
+    "number": 55
+  },
+  {
+    "slug": "surah-al-waqiah",
+    "title": "Surah Al Waqiah - سورة الواقعة",
+    "number": 56
+  },
+  {
+    "slug": "surah-al-hadid",
+    "title": "Surah Al Hadid - سورة الحديد",
+    "number": 57
+  },
+  {
+    "slug": "surah-al-mujadilah",
+    "title": "Surah Al Mujadilah - سورة المجادلة",
+    "number": 58
+  },
+  {
+    "slug": "surah-al-hashr",
+    "title": "Surah Al Hashr - سورة الحشر",
+    "number": 59
+  },
+  {
+    "slug": "surah-al-mumtahinah",
+    "title": "Surah Al Mumtahinah - سورة الممتحنة",
+    "number": 60
+  },
+  {
+    "slug": "surah-as-saff",
+    "title": "Surah As Saff - سورة الصف",
+    "number": 61
+  },
+  {
+    "slug": "surah-al-jumuah",
+    "title": "Surah Al Jumuah - سورة الجمعة",
+    "number": 62
+  },
+  {
+    "slug": "surah-al-munafiqun",
+    "title": "Surah Al Munafiqun - سورة المنافقون",
+    "number": 63
+  },
+  {
+    "slug": "surah-at-taghabun",
+    "title": "Surah At Taghabun - سورة التغابن",
+    "number": 64
+  },
+  {
+    "slug": "surah-at-talaq",
+    "title": "Surah At Talaq - سورة الطلاق",
+    "number": 65
+  },
+  {
+    "slug": "surah-at-tahrim",
+    "title": "Surah At Tahrim - سورة التحريم",
+    "number": 66
+  },
+  {
+    "slug": "surah-al-mulk",
+    "title": "Surah Al Mulk - سورة الملك",
+    "number": 67
+  },
+  {
+    "slug": "surah-al-qalam",
+    "title": "Surah Al Qalam - سورة القلم",
+    "number": 68
+  },
+  {
+    "slug": "surah-al-haqqah",
+    "title": "Surah Al Haqqah - سورة الحاقة",
+    "number": 69
+  },
+  {
+    "slug": "surah-al-maarij",
+    "title": "Surah Al Maarij - سورة المعارج",
+    "number": 70
+  },
+  {
+    "slug": "surah-nuh",
+    "title": "Surah Nuh - سورة نوح",
+    "number": 71
+  },
+  {
+    "slug": "surah-al-jin",
+    "title": "Surah Al Jin - سورة الجن",
+    "number": 72
+  },
+  {
+    "slug": "surah-al-muzzammil",
+    "title": "Surah Al Muzzammil - سورة المزمل",
+    "number": 73
+  },
+  {
+    "slug": "surah-al-qiyamah",
+    "title": "Surah Al Qiyamah - سورة القيامة",
+    "number": 74
+  },
+  {
+    "slug": "surah-ad-dahr",
+    "title": "Surah Ad Dahr - سورة الدهر",
+    "number": 75
+  },
+  {
+    "slug": "surah-al-mudassir",
+    "title": "Surah Al Mudassir - سورة المدثر",
+    "number": 76
+  },
+  {
+    "slug": "surah-al-mursalat",
+    "title": "Surah Al Mursalat - سورة المرسلات",
+    "number": 77
+  },
+  {
+    "slug": "surah-an-naba",
+    "title": "Surah An Naba - سورة النبأ",
+    "number": 78
+  },
+  {
+    "slug": "surah-an-naziat",
+    "title": "Surah An Naziat - سورة النازعات",
+    "number": 79
+  },
+  {
+    "slug": "surah-abasa",
+    "title": "Surah Abasa - سورة عبس",
+    "number": 80
+  },
+  {
+    "slug": "surah-at-takwir",
+    "title": "Surah At Takwir - سورة التكوير",
+    "number": 81
+  },
+  {
+    "slug": "surah-al-infitar",
+    "title": "Surah Al Infitar - سورة الإنفطار",
+    "number": 82
+  },
+  {
+    "slug": "surah-al-mutaffifin",
+    "title": "Surah Al Mutaffifin - سورة المطففين",
+    "number": 83
+  },
+  {
+    "slug": "surah-al-inshiqaq",
+    "title": "Surah Al Inshiqaq - سورة الانشقاق",
+    "number": 84
+  },
+  {
+    "slug": "surah-al-buruj",
+    "title": "Surah Al Buruj - سورة البروج",
+    "number": 85
+  },
+  {
+    "slug": "surah-at-tariq",
+    "title": "Surah At Tariq - سورة الطارق",
+    "number": 86
+  },
+  {
+    "slug": "surah-al-ala",
+    "title": "Surah Al Ala - سورة الأعلى",
+    "number": 87
+  },
+  {
+    "slug": "surah-al-ghashiyah",
+    "title": "Surah Al Ghashiyah - سورة الغاشية",
+    "number": 88
+  },
+  {
+    "slug": "surah-al-fajr",
+    "title": "Surah Al Fajr - سورة الفجر",
+    "number": 89
+  },
+  {
+    "slug": "surah-al-balad",
+    "title": "Surah Al Balad - سورة البلد",
+    "number": 90
+  },
+  {
+    "slug": "surah-ash-shams",
+    "title": "Surah Ash Shams - سورة الشمس",
+    "number": 91
+  },
+  {
+    "slug": "surah-al-lail",
+    "title": "Surah Al Lail - سورة الليل",
+    "number": 92
+  },
+  {
+    "slug": "surah-ad-duha",
+    "title": "Surah Ad Duha - سورة الضحى",
+    "number": 93
+  },
+  {
+    "slug": "surah-alam-nashrah",
+    "title": "Surah Alam Nashrah - سورة الانشراح",
+    "number": 94
+  },
+  {
+    "slug": "surah-at-tin",
+    "title": "Surah At Tin - سورة التين",
+    "number": 95
+  },
+  {
+    "slug": "surah-al-alaq",
+    "title": "Surah Al Alaq - سورة العلق",
+    "number": 96
+  },
+  {
+    "slug": "surah-al-qadr",
+    "title": "Surah Al Qadr - سورة القدر",
+    "number": 97
+  },
+  {
+    "slug": "surah-al-bayyinah",
+    "title": "Surah Al Bayyinah - سورة البينة",
+    "number": 98
+  },
+  {
+    "slug": "surah-az-zilzal",
+    "title": "Surah Az Zilzal - سورة الزلزلة",
+    "number": 99
+  },
+  {
+    "slug": "surah-al-adiyat",
+    "title": "Surah Al Adiyat - سورةالعاديات",
+    "number": 100
+  },
+  {
+    "slug": "surah-al-qariah",
+    "title": "Surah Al Qariah - سورة القارعة",
+    "number": 101
+  },
+  {
+    "slug": "surah-at-takasur",
+    "title": "Surah At Takasur - سورة التكاثر",
+    "number": 102
+  },
+  {
+    "slug": "surah-al-asr",
+    "title": "Surah Al Asr - سورة العصر",
+    "number": 103
+  },
+  {
+    "slug": "surah-al-humazah",
+    "title": "Surah Al Humazah - سورة الهمزة",
+    "number": 104
+  },
+  {
+    "slug": "surah-al-fil",
+    "title": "Surah Al Fil - سورة الفيل",
+    "number": 105
+  },
+  {
+    "slug": "surah-quraish",
+    "title": "Surah Quraish - سورةالقريش",
+    "number": 106
+  },
+  {
+    "slug": "surah-al-maun",
+    "title": "Surah Al Maun - سورة الماعون",
+    "number": 107
+  },
+  {
+    "slug": "surah-al-kausar",
+    "title": "Surah Al Kausar - سورة الكوثر",
+    "number": 108
+  },
+  {
+    "slug": "surah-al-kafiroon",
+    "title": "Surah Al Kafiroon - سورة الكافرون",
+    "number": 109
+  },
+  {
+    "slug": "surah-an-nasr",
+    "title": "Surah An Nasr - سورة النصر",
+    "number": 110
+  },
+  {
+    "slug": "surah-al-lahab",
+    "title": "Surah Al Lahab - سورة لهب",
+    "number": 111
+  },
+  {
+    "slug": "surah-al-ikhlas",
+    "title": "Surah Al Ikhlas - سورة الإخلاص",
+    "number": 112
+  },
+  {
+    "slug": "surah-al-falaq",
+    "title": "Surah Al Falaq - سورة الفلق",
+    "number": 113
+  },
+  {
+    "slug": "surah-an-nas",
+    "title": "Surah An Nas - سورة الناس",
+    "number": 114
+  }
+]

@@ -1,20 +1,26 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Quran Tutors Academy CMS
 
-# Run and deploy your AI Studio app
+QTA is a React and Vite prototype for Quran tutor discovery, courses, and lesson operations. Use synthetic data in this build. The portals and admin login use browser-local demo state.
 
-This contains everything you need to run your app locally.
+## Local development
 
-View your app in AI Studio: https://ai.studio/apps/fa5a67e6-6610-468c-b6a9-3e2cad1c55be
+Use Node.js 24, which matches CI.
 
-## Run Locally
+```sh
+npm ci
+npm run dev
+```
 
-**Prerequisites:**  Node.js
+Open http://localhost:3000. The current app runs without an API key.
 
+## Verification
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```sh
+npm run lint
+npm run build
+npm run preview -- --host 127.0.0.1
+```
+
+The GitHub Actions workflow runs a clean install, TypeScript checks, and the production build on pull requests and pushes to main. A staging host for the build must support single-page app fallback so deep links such as `/tutors` load on refresh.
+
+See the [project plan](PROJECT_PLAN.md) for delivery phases and release gates.

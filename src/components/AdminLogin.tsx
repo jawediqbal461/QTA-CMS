@@ -84,7 +84,7 @@ export default function AdminLogin({ onLoginSuccess, onBackToHome }: AdminLoginP
 
           <div className="flex items-center space-x-1.5 bg-neutral-950 px-2.5 py-1 rounded-full border border-neutral-850">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider font-mono">Secure Node</span>
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider font-mono">Demo sandbox</span>
           </div>
         </div>
 

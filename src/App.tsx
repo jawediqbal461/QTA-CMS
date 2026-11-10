@@ -13,6 +13,7 @@ import {
   slugify
 } from "./data/mockData";
 import type { StudentSignUpData, TutorSignUpData } from "./components/SignUp";
+import legacyBlogIndex from "./data/blog-legacy/index.json";
 
 // PublicHome is the landing view, so it's loaded eagerly.
 // Everything else is only needed after explicit navigation, so it's
@@ -23,10 +24,11 @@ const TutorPortal = lazy(() => import("./components/TutorPortal"));
 const StudentPortal = lazy(() => import("./components/StudentPortal"));
 const AdminCMS = lazy(() => import("./components/AdminCMS"));
 const AdminLogin = lazy(() => import("./components/AdminLogin"));
-const QuranExplorer = lazy(() => import("./components/QuranExplorer"));
+const LegacyQuran = lazy(() => import("./components/LegacyQuran"));
 const TutorProfilePage = lazy(() => import("./components/TutorProfilePage"));
 const TutorDirectory = lazy(() => import("./components/TutorDirectory"));
 const BlogsPage = lazy(() => import("./components/BlogsPage"));
+const LegacyBlog = lazy(() => import("./components/LegacyBlog"));
 const BlogPostPage = lazy(() => import("./components/BlogPostPage"));
 const SignUp = lazy(() => import("./components/SignUp"));
 
@@ -547,14 +549,14 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => navigate("/blogs")}
+              onClick={() => navigate("/blog/")}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                isPathPrefix("/blogs")
+                (isPathPrefix("/blog") || legacyBlogIndex.some((post) => isPathPrefix(post.path.slice(0, -1))))
                   ? "bg-neutral-800/85 text-white shadow-inner border border-neutral-700/50"
                   : "text-neutral-400 hover:text-white hover:bg-white/5"
               }`}
             >
-              <FileText size={14} className={isPathPrefix("/blogs") ? "text-emerald-400" : "text-neutral-400"} />
+              <FileText size={14} className={isPathPrefix("/blog") ? "text-emerald-400" : "text-neutral-400"} />
               <span>Blogs</span>
             </button>
 
@@ -788,11 +790,11 @@ export default function App() {
 
                 <button
                   onClick={() => {
-                    navigate("/blogs");
+                    navigate("/blog/");
                     setIsMobileMenuOpen(false);
                   }}
                   className={`p-3 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1.5 border ${
-                    isPathPrefix("/blogs")
+                    isPathPrefix("/blog")
                       ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/30"
                       : "bg-neutral-900 text-neutral-400 border-transparent hover:text-white hover:bg-neutral-850"
                   }`}
@@ -977,6 +979,10 @@ export default function App() {
             {/* Academy Insights — blog listing and individual real, SEO-friendly article URLs */}
             <Route path="/blogs" element={<BlogsPage />} />
             <Route path="/blogs/:slug" element={<BlogPostPage />} />
+            <Route path="/blog/" element={<LegacyBlog />} />
+            {legacyBlogIndex.map(({ path }) =>
+              React.createElement(Route, { key: path, path, element: <LegacyBlog /> })
+            )}
 
             {/* Sign Up — real student & tutor registration */}
             <Route path="/signup/student" element={
@@ -1078,25 +1084,8 @@ export default function App() {
               )
             } />
 
-            {/* Quran Surahs Explorer Page — every surah gets its own real, SEO-friendly URL */}
-            <Route path="/quran" element={
-              <QuranExplorer
-                onNavigateHome={() => navigate("/")}
-                onNavigateToAdmin={(subTab) => {
-                  setAdminInitialSubTab(subTab);
-                  navigate("/admin");
-                }}
-              />
-            } />
-            <Route path="/quran/:surahSlug" element={
-              <QuranExplorer
-                onNavigateHome={() => navigate("/")}
-                onNavigateToAdmin={(subTab) => {
-                  setAdminInitialSubTab(subTab);
-                  navigate("/admin");
-                }}
-              />
-            } />
+            <Route path="/quran" element={<LegacyQuran />} />
+            <Route path="/quran/:surahSlug" element={<LegacyQuran />} />
 
             {/* Unknown paths fall back to the homepage */}
             <Route path="*" element={<Navigate to="/" replace />} />
