@@ -27,9 +27,18 @@
 }
 
 .legacy-quran-arabic {
-  font-family: "Traditional Arabic", "Times New Roman", serif;
+  font-family: "Noto Naskh Arabic", "Traditional Arabic", "Times New Roman", serif;
   font-size: clamp(1.5rem, 4vw, 2.5rem);
   line-height: 2;
+}
+
+.quran-ayah-arabic {
+  font-family: "Noto Naskh Arabic", "Traditional Arabic", "Times New Roman", serif;
+  line-height: 2.1;
+}
+
+.font-arabic {
+  font-family: "Noto Naskh Arabic", "Traditional Arabic", "Times New Roman", serif;
 }
 
 .legacy-blog-content ul,
