@@ -19,7 +19,7 @@ import { clearStoredAdminToken, getStoredAdminToken } from "./lib/api";
 // Everything else is only needed after explicit navigation, so it's
 // code-split into its own chunk to keep the initial bundle smaller.
 import PublicHome from "./components/PublicHome";
-import { AcademyOperations, AccountManagement, AccountPortal, PublicTutors, TutorReview, VerifyEmail } from "./components/Marketplace";
+import { AdminDashboard, AccountPortal, PublicTutors, VerifyEmail } from "./components/Marketplace";
 const Classroom = lazy(() => import("./components/Classroom"));
 const AdminCMS = lazy(() => import("./components/AdminCMS"));
 const AdminLogin = lazy(() => import("./components/AdminLogin"));
@@ -826,9 +826,17 @@ export default function App() {
             <Route path="/student" element={React.createElement(AccountPortal, { key: "student", role: "STUDENT" })} />
             <Route path="/guardian" element={React.createElement(AccountPortal, { key: "guardian", role: "GUARDIAN" })} />
             <Route path="/tutor" element={React.createElement(AccountPortal, { key: "tutor", role: "TUTOR" })} />
-            <Route path="/admin/tutors" element={<TutorReview />} />
+            <Route path="/admin/tutors" element={isAdminAuthenticated ? (
+              <AdminDashboard onLogout={() => { clearStoredAdminToken(); setIsAdminAuthenticated(false); }} />
+            ) : (
+              <AdminLogin onLoginSuccess={() => setIsAdminAuthenticated(true)} onBackToHome={() => navigate("/")} />
+            )} />
             <Route path="/verify-email" element={<VerifyEmail />} />
-            <Route path="/admin/operations" element={<AcademyOperations />} />
+            <Route path="/admin/operations" element={isAdminAuthenticated ? (
+              <AdminDashboard onLogout={() => { clearStoredAdminToken(); setIsAdminAuthenticated(false); }} />
+            ) : (
+              <AdminLogin onLoginSuccess={() => setIsAdminAuthenticated(true)} onBackToHome={() => navigate("/")} />
+            )} />
 
             {/* Live Classroom Simulator */}
             <Route path="/classroom" element={
@@ -867,7 +875,7 @@ export default function App() {
 
             {/* Admin CMS and database layout */}
             <Route path="/admin" element={isAdminAuthenticated ? (
-              <AccountManagement onLogout={() => { clearStoredAdminToken(); setIsAdminAuthenticated(false); }} />
+              <AdminDashboard onLogout={() => { clearStoredAdminToken(); setIsAdminAuthenticated(false); }} />
             ) : (
               <AdminLogin onLoginSuccess={() => setIsAdminAuthenticated(true)} onBackToHome={() => navigate("/")} />
             )} />

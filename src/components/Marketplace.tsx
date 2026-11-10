@@ -24,6 +24,7 @@ type Profile = Tutor & {
   account: { fullName: string; timeZone: string; email?: string }; availabilitySlots: Slot[];
 };
 type Student = { id: string; fullName: string };
+type NotificationItem = { id: string; title: string; message: string; visibleAt: string; readAt: string | null };
 type Booking = {
   id: string; tutorId: string; scheduledAtUtc: string; durationMinutes: number; status: string;
   student: { id: string; fullName: string }; tutor?: { account: { fullName: string } };
@@ -260,6 +261,53 @@ function AccountForm({ role, register, onSession }: { role: Role; register: bool
   </form>;
 }
 
+type DeskTab = "overview" | "lessons" | "profile" | "notifications";
+
+function DeskSidebar({ role, fullName, email, activeTab, setActiveTab, unread, signOut }: {
+  role: Role; fullName: string; email: string; activeTab: DeskTab; setActiveTab: (tab: DeskTab) => void;
+  unread: number; signOut: () => void;
+}) {
+  const tabs: Array<{ id: DeskTab; label: string; icon: typeof CalendarCheck; count?: number }> = [
+    { id: "overview", label: "Overview", icon: CalendarCheck },
+    { id: "lessons", label: "Lessons", icon: BookOpen },
+    { id: "profile", label: "My profile", icon: Users },
+    { id: "notifications", label: "Notifications", icon: Bell, count: unread },
+  ];
+  return <aside className="space-y-4 lg:sticky lg:top-6">
+    <div className={panel}>
+      <div className="flex items-center gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-950 text-sm font-black text-emerald-400">
+          {fullName.charAt(0).toUpperCase()}
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold text-white">{fullName}</p>
+          <p className="truncate text-[11px] text-neutral-500">{email}</p>
+        </div>
+      </div>
+      <span className={badge}>{accountPaths[role].label}</span>
+    </div>
+    <nav className="space-y-1 rounded-2xl border border-neutral-800 bg-neutral-900 p-2" aria-label="Desk sections">
+      {tabs.map(({ id, label, icon: Icon, count }) => (
+        <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id}
+          className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-xs font-bold transition ${
+            activeTab === id
+              ? "border border-emerald-500/25 bg-emerald-500/10 text-emerald-400"
+              : "border border-transparent text-neutral-300 hover:bg-neutral-800 hover:text-white"
+          }`}>
+          <Icon size={14} />
+          <span className="flex-1">{label}</span>
+          {!!count && <span className="rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-extrabold text-neutral-950">{count}</span>}
+        </button>
+      ))}
+      <button type="button" onClick={signOut}
+        className="mt-1 flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-xs font-bold text-rose-400 transition hover:bg-rose-500/10">
+        <LogOut size={14} />
+        <span>Sign out</span>
+      </button>
+    </nav>
+  </aside>;
+}
+
 export function AccountPortal({ role, register = false, login = false }: { role: Role; register?: boolean; login?: boolean }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -269,6 +317,8 @@ export function AccountPortal({ role, register = false, login = false }: { role:
   const query = params.toString() ? `?${params.toString()}` : "";
   const [profileVersion, setProfileVersion] = useState(0);
   const [deskVersion, setDeskVersion] = useState(0);
+  const [notifVersion, setNotifVersion] = useState(0);
+  const [activeTab, setActiveTab] = useState<DeskTab>("overview");
   const deskActive = !register && !login && !!token;
   useEffect(() => {
     if (!deskActive) return;
@@ -282,6 +332,9 @@ export function AccountPortal({ role, register = false, login = false }: { role:
   }, [deskActive]);
   const session = useResource<{ role: string; fullName: string; email: string; timeZone: string }>(
     !register && !login && token ? "/auth/me" : null, token, profileVersion);
+  const alerts = useResource<NotificationItem[]>(
+    deskActive ? "/notifications" : null, token, notifVersion + deskVersion);
+  const unread = alerts?.data?.filter((alert) => !alert.readAt).length ?? 0;
   const title = `${paths.label} Desk`;
   useSEO({ title: register ? `${paths.label} registration` : login ? `${paths.label} login` : title, noindex: true });
   const signOut = () => { sessionStorage.removeItem(storageKey); setToken(""); };
@@ -323,28 +376,55 @@ export function AccountPortal({ role, register = false, login = false }: { role:
   if (!token || session?.unauthorized || (session?.data && session.data.role !== role)) {
     return <Navigate replace to={paths.login + query} />;
   }
-  return <Page title={title} eyebrow={session?.data ? `Welcome, ${session.data.fullName}` : paths.label}>
-    <nav aria-label="Desk sections" className="flex flex-wrap items-center gap-1 rounded-2xl border border-neutral-800 bg-neutral-900 p-2 text-xs font-bold">
-      <a href="#desk-overview" className="rounded-xl px-3 py-2 text-neutral-300 transition hover:bg-neutral-800 hover:text-white">Overview</a>
-      <a href="#desk-lessons" className="rounded-xl px-3 py-2 text-neutral-300 transition hover:bg-neutral-800 hover:text-white">Lessons</a>
-      <a href="#desk-profile" className="rounded-xl px-3 py-2 text-neutral-300 transition hover:bg-neutral-800 hover:text-white">My profile</a>
-      <a href="#desk-notifications" className="rounded-xl px-3 py-2 text-neutral-300 transition hover:bg-neutral-800 hover:text-white">Notifications</a>
-      <button className={`${dangerLink} ml-auto rounded-xl px-3 py-2 transition hover:bg-rose-500/10`} onClick={signOut}>
-        <LogOut size={13} />
-        <span>Sign out</span>
-      </button>
-    </nav>
+  return <section className="mx-auto max-w-6xl space-y-6 px-4 py-10 text-neutral-200">
+    <div className="relative overflow-hidden rounded-3xl border border-neutral-800 bg-gradient-to-r from-emerald-950/30 via-neutral-900 to-neutral-950 p-6 shadow-2xl md:p-8">
+      <div aria-hidden="true" className="pointer-events-none absolute right-0 top-0 h-72 w-72 rounded-full bg-emerald-500/5 blur-[100px]" />
+      <div className="relative flex flex-wrap items-center justify-between gap-6">
+        <div>
+          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-emerald-400">
+            <Sparkles size={11} />
+            <span>{session?.data ? `Welcome, ${session.data.fullName}` : paths.label}</span>
+          </div>
+          <h1 className="text-2xl font-black tracking-tight text-white md:text-4xl">{title}</h1>
+        </div>
+        {session?.data && (
+          <div className="flex flex-wrap gap-3">
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 px-4 py-2.5 text-center">
+              <p className="text-lg font-black text-white">{unread}</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">Unread</p>
+            </div>
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 px-4 py-2.5 text-center">
+              <p className="text-xs font-black text-emerald-400">{session.data.timeZone}</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">Time zone</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
     <ErrorText value={session?.error} />
     {!session && <p role="status" className="text-sm text-neutral-500">Checking session…</p>}
-    {session?.data && <>
-      {role === "TUTOR" ? <TutorWorkspace token={token} profileVersion={profileVersion} deskVersion={deskVersion}
-        timeZone={session.data.timeZone} refreshAccount={() => setProfileVersion((value) => value + 1)} />
-        : <GuardianWorkspace token={token} role={role} preferredTutor={params.get("tutor") ?? ""}
-          timeZone={session.data.timeZone} deskVersion={deskVersion} />}
-      <DeskProfile token={token} role={role} profile={session.data} refresh={() => setProfileVersion((value) => value + 1)} />
-      <DeskNotifications token={token} timeZone={session.data.timeZone} deskVersion={deskVersion} />
-    </>}
-  </Page>;
+    {session?.data && (
+      <div className="lg:grid lg:grid-cols-[240px_1fr] lg:items-start lg:gap-6">
+        <DeskSidebar role={role} fullName={session.data.fullName} email={session.data.email}
+          activeTab={activeTab} setActiveTab={setActiveTab} unread={unread} signOut={signOut} />
+        <div className="mt-6 min-w-0 space-y-6 lg:mt-0">
+          {role === "TUTOR" ? <TutorWorkspace token={token} profileVersion={profileVersion} deskVersion={deskVersion}
+            timeZone={session.data.timeZone} refreshAccount={() => setProfileVersion((value) => value + 1)}
+            activeTab={activeTab} onViewLessons={() => setActiveTab("lessons")} />
+            : <GuardianWorkspace token={token} role={role} preferredTutor={params.get("tutor") ?? ""}
+              timeZone={session.data.timeZone} deskVersion={deskVersion}
+              activeTab={activeTab} onViewLessons={() => setActiveTab("lessons")} />}
+          <div className={activeTab === "profile" ? "" : "hidden"}>
+            <DeskProfile token={token} role={role} profile={session.data} refresh={() => setProfileVersion((value) => value + 1)} />
+          </div>
+          <div className={activeTab === "notifications" ? "" : "hidden"}>
+            <DeskNotifications token={token} timeZone={session.data.timeZone} alerts={alerts}
+              onMarkRead={() => setNotifVersion((value) => value + 1)} />
+          </div>
+        </div>
+      </div>
+    )}
+  </section>;
 }
 
 export function VerifyEmail() {
@@ -399,12 +479,12 @@ function DeskProfile({ token, role, profile, refresh }: {
   </form>;
 }
 
-function DeskNotifications({ token, timeZone, deskVersion }: { token: string; timeZone: string; deskVersion: number }) {
-  const [version, setVersion] = useState(0);
+function DeskNotifications({ token, timeZone, alerts, onMarkRead }: {
+  token: string; timeZone: string; alerts?: { data?: NotificationItem[]; error?: string }; onMarkRead: () => void;
+}) {
   const action = useAction();
-  const alerts = useResource<Array<{ id: string; title: string; message: string; visibleAt: string; readAt: string | null }>>("/notifications", token, version + deskVersion);
   const unread = alerts?.data?.filter((alert) => !alert.readAt).length ?? 0;
-  return <section id="desk-notifications" className={`${panel} scroll-mt-24`}>
+  return <section className={panel}>
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h2 className="flex items-center gap-2 text-sm font-bold text-white">
         <Bell size={15} className="text-emerald-400" />
@@ -414,7 +494,7 @@ function DeskNotifications({ token, timeZone, deskVersion }: { token: string; ti
       {unread > 0 && <button className={ghostLink} disabled={action.busy} onClick={() => {
         void action.run(async () => {
           await accountRequest("/notifications/read", token, "PATCH");
-          setVersion((value) => value + 1);
+          onMarkRead();
         });
       }}>Mark all as read</button>}
     </div>
@@ -442,7 +522,9 @@ function orderedLessons(bookings: Booking[] = []) {
   return [...upcoming, ...history];
 }
 
-function DeskOverview({ bookings, role, token, timeZone }: { bookings?: Booking[]; role: Role; token: string; timeZone: string }) {
+function DeskOverview({ bookings, role, token, timeZone, onViewLessons }: {
+  bookings?: Booking[]; role: Role; token: string; timeZone: string; onViewLessons: () => void;
+}) {
   const now = Date.now();
   const upcoming = bookings?.filter((booking) => upcomingBooking(booking, now)) ?? [];
   const people = new Map<string, string>();
@@ -451,7 +533,7 @@ function DeskOverview({ bookings, role, token, timeZone }: { bookings?: Booking[
     if (role === "TUTOR") people.set(booking.student.id, booking.student.fullName);
     else if (booking.tutor) people.set(booking.tutorId, booking.tutor.account.fullName);
   }
-  return <section id="desk-overview" className="grid scroll-mt-24 gap-4 md:grid-cols-2">
+  return <div className="grid gap-4 md:grid-cols-2">
     <div className={panel}>
       <h2 className="flex items-center gap-2 text-sm font-bold text-white">
         <CalendarCheck size={15} className="text-emerald-400" />
@@ -461,10 +543,10 @@ function DeskOverview({ bookings, role, token, timeZone }: { bookings?: Booking[
         <p className={badge}>{upcoming.length} scheduled</p>
         <LessonDetails booking={upcoming[0]} timeZone={timeZone} />
         <LessonJoin booking={upcoming[0]} token={token} role={role} timeZone={timeZone} />
-        <a className={ghostLink} href="#desk-lessons">
+        <button type="button" className={ghostLink} onClick={onViewLessons}>
           <span>View lessons</span>
           <ChevronRight size={13} />
-        </a>
+        </button>
       </> : <p className="text-sm text-neutral-400">No upcoming classes.</p>}
     </div>
     <div className={panel}>
@@ -477,7 +559,7 @@ function DeskOverview({ bookings, role, token, timeZone }: { bookings?: Booking[
           {role === "TUTOR" ? name : <Link className={ghostLink} to={`/tutors/${id}`}>{name}</Link>}
         </li>)}</ul>}
     </div>
-  </section>;
+  </div>;
 }
 
 function LessonDetails({ booking, timeZone }: { booking: Booking; timeZone?: string }) {
@@ -596,36 +678,38 @@ function LessonActions({ booking, token, role, timeZone, refresh }: {
   </div>;
 }
 
-function TutorWorkspace({ token, profileVersion, deskVersion, timeZone, refreshAccount }: {
+function TutorWorkspace({ token, profileVersion, deskVersion, timeZone, refreshAccount, activeTab, onViewLessons }: {
   token: string; profileVersion: number; deskVersion: number; timeZone: string; refreshAccount: () => void;
+  activeTab: DeskTab; onViewLessons: () => void;
 }) {
   const [version, setVersion] = useState(0);
   const profile = useResource<Profile>("/tutor/profile", token, version + profileVersion);
   const bookings = useResource<Booking[]>("/tutor/bookings", token, version + deskVersion);
   return <>
-    <DeskOverview bookings={bookings?.data} role="TUTOR" token={token} timeZone={timeZone} />
-    <ErrorText value={profile?.error ?? bookings?.error} />
-    {!profile && <p role="status">Loading profile…</p>}
-    <section id="desk-lessons" className={`${panel} scroll-mt-24`}>
-      <h2 className="flex items-center gap-2 text-sm font-bold text-white">
-        <CalendarCheck size={15} className="text-emerald-400" />
-        <span>Your lessons</span>
-      </h2>
-      {bookings?.data?.length === 0 && <p className="text-sm text-neutral-400">No lessons booked yet.</p>}
-      {orderedLessons(bookings?.data).map((booking) => <article className={panel} key={booking.id}>
-        <LessonDetails booking={booking} timeZone={timeZone} />
-        <LessonActions booking={booking} token={token} role="TUTOR" timeZone={timeZone} refresh={() => setVersion((value) => value + 1)} />
-      </article>)}
-    </section>
-    {profile?.data && <details className={panel}>
-      <summary className="cursor-pointer text-lg font-semibold">Teaching profile and weekly availability · {profile.data.approvalStatus}</summary>
-      <div className="space-y-4">
-        {createElement(TutorEditor, {
-          key: profile.data.updatedAt, profile: profile.data, token,
-          refresh: refreshAccount,
-        })}
-      </div>
-    </details>}
+    <div className={activeTab === "overview" ? "" : "hidden"}>
+      <DeskOverview bookings={bookings?.data} role="TUTOR" token={token} timeZone={timeZone} onViewLessons={onViewLessons} />
+    </div>
+    <div className={`space-y-4 ${activeTab === "lessons" ? "" : "hidden"}`}>
+      <ErrorText value={profile?.error ?? bookings?.error} />
+      <section className={panel}>
+        <h2 className="flex items-center gap-2 text-sm font-bold text-white">
+          <CalendarCheck size={15} className="text-emerald-400" />
+          <span>Your lessons</span>
+        </h2>
+        {bookings?.data?.length === 0 && <p className="text-sm text-neutral-400">No lessons booked yet.</p>}
+        {orderedLessons(bookings?.data).map((booking) => <article className={panel} key={booking.id}>
+          <LessonDetails booking={booking} timeZone={timeZone} />
+          <LessonActions booking={booking} token={token} role="TUTOR" timeZone={timeZone} refresh={() => setVersion((value) => value + 1)} />
+        </article>)}
+      </section>
+    </div>
+    <div className={`space-y-4 ${activeTab === "profile" ? "" : "hidden"}`}>
+      {!profile && <p role="status" className="text-sm text-neutral-500">Loading profile…</p>}
+      {profile?.data && createElement(TutorEditor, {
+        key: profile.data.updatedAt, profile: profile.data, token,
+        refresh: refreshAccount,
+      })}
+    </div>
   </>;
 }
 
@@ -681,8 +765,9 @@ function TutorEditor({ profile, token, refresh }: { profile: Profile; token: str
   </>;
 }
 
-function GuardianWorkspace({ token, role, preferredTutor, deskVersion, timeZone }: {
+function GuardianWorkspace({ token, role, preferredTutor, deskVersion, timeZone, activeTab, onViewLessons }: {
   token: string; role: "GUARDIAN" | "STUDENT"; preferredTutor: string; deskVersion: number; timeZone: string;
+  activeTab: DeskTab; onViewLessons: () => void;
 }) {
   const [version, setVersion] = useState(0);
   const [tutorId, setTutorId] = useState(preferredTutor);
@@ -699,7 +784,10 @@ function GuardianWorkspace({ token, role, preferredTutor, deskVersion, timeZone 
   const refresh = () => setVersion((value) => value + 1);
 
   return <>
-    <DeskOverview bookings={bookings?.data} role={role} token={token} timeZone={timeZone} />
+    <div className={activeTab === "overview" ? "" : "hidden"}>
+      <DeskOverview bookings={bookings?.data} role={role} token={token} timeZone={timeZone} onViewLessons={onViewLessons} />
+    </div>
+    <div className={`space-y-6 ${activeTab === "lessons" ? "" : "hidden"}`}>
     {role === "GUARDIAN" && <form className={panel} onSubmit={(event) => {
       event.preventDefault();
       const form = event.currentTarget;
@@ -770,10 +858,10 @@ function GuardianWorkspace({ token, role, preferredTutor, deskVersion, timeZone 
         {reschedule && <button type="button" className={ghostLink} onClick={() => setReschedule(undefined)}>Keep original time</button>}
       </div>
     </form>
-    <section id="desk-lessons" className={`${panel} scroll-mt-24`}>
+    <section className={panel}>
       <h2 className="text-sm font-bold text-white">Your lessons</h2>
       <ErrorText value={bookings?.error} />
-      {bookings?.data?.length === 0 && <p>No lessons booked yet.</p>}
+      {bookings?.data?.length === 0 && <p className="text-sm text-neutral-400">No lessons booked yet.</p>}
       {orderedLessons(bookings?.data).map((booking) => (
         <div className="space-y-2 border-t border-neutral-700 pt-3" key={booking.id}>
           <LessonDetails booking={booking} timeZone={timeZone} />
@@ -794,6 +882,7 @@ function GuardianWorkspace({ token, role, preferredTutor, deskVersion, timeZone 
         </div>
       ))}
     </section>
+    </div>
   </>;
 }
 
@@ -808,31 +897,20 @@ type ManagedAccount = {
   };
 };
 
-export function AccountManagement({ onLogout }: { onLogout: () => void }) {
-  const token = getStoredAdminToken();
+function AccountsPanel({ token }: { token: string }) {
   const [version, setVersion] = useState(0);
   const [query, setQuery] = useState("");
   const [role, setRole] = useState("");
   const [selected, setSelected] = useState("");
   const [notice, setNotice] = useState("");
   const action = useAction();
-  const result = useResource<ManagedAccount[]>(token ? "/admin/accounts" : null, token ?? undefined, version);
-  useSEO({ title: "Academy account management", noindex: true });
+  const result = useResource<ManagedAccount[]>("/admin/accounts", token, version);
   const accounts = result?.data?.filter((entry) => entry.role in accountPaths) ?? [];
   const visible = accounts.filter((entry) =>
     (!role || entry.role === role) &&
     [entry.account.fullName, entry.account.email, entry.account.id].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
   const refresh = () => setVersion((value) => value + 1);
-  return <Page title="Academy Administration" eyebrow="Admin CMS">
-    <nav className="flex flex-wrap items-center gap-1 rounded-2xl border border-neutral-800 bg-neutral-900 p-2 text-xs font-bold">
-      <Link className="rounded-xl px-3 py-2 text-neutral-300 transition hover:bg-neutral-800 hover:text-white" to="/admin/tutors">Tutor applications</Link>
-      <Link className="rounded-xl px-3 py-2 text-neutral-300 transition hover:bg-neutral-800 hover:text-white" to="/admin/operations">Lesson recovery &amp; audit</Link>
-      <Link className="rounded-xl px-3 py-2 text-amber-400 transition hover:bg-amber-500/10" to="/admin/content">Prototype content tools</Link>
-      <button className={`${dangerLink} ml-auto rounded-xl px-3 py-2 transition hover:bg-rose-500/10`} onClick={onLogout}>
-        <LogOut size={13} />
-        <span>Sign out</span>
-      </button>
-    </nav>
+  return <>
     <div className="grid gap-3 sm:grid-cols-3">
       {(["TUTOR", "STUDENT", "GUARDIAN"] as const).map((key) => {
         const Icon = key === "TUTOR" ? GraduationCap : key === "STUDENT" ? BookOpen : Users;
@@ -924,25 +1002,20 @@ export function AccountManagement({ onLogout }: { onLogout: () => void }) {
         </div>
       </article>
     ))}
-  </Page>;
+  </>;
 }
 
-export function AcademyOperations() {
-  const token = getStoredAdminToken();
+function OperationsPanel({ token }: { token: string }) {
   const [version, setVersion] = useState(0);
   const action = useAction();
   const operations = useResource<{
     missed: Booking[];
     audit: Array<{ id: string; action: string; targetType: string; targetId: string | null; createdAt: string;
       actor: { fullName: string } | null; resolution: { status: string; reason: string } | null }>;
-  }>(token ? "/admin/operations" : null, token ?? undefined, version);
-  useSEO({ title: "Academy operations", noindex: true });
-  if (!token || operations?.unauthorized) return <Page title="Academy operations">
-    <Link to="/admin">Sign in as an administrator</Link>
-  </Page>;
-  return <Page title="Academy operations">
+  }>("/admin/operations", token, version);
+  if (operations?.unauthorized) return <p className="text-sm text-rose-400">Your session expired. Sign in again.</p>;
+  return <>
     <div className="flex gap-4">
-      <Link className={ghostLink} to="/admin">Admin CMS</Link>
       <button className={ghostLink} onClick={() => setVersion((value) => value + 1)}>Refresh queue</button>
     </div>
     <ErrorText value={action.error ?? operations?.error} />
@@ -988,21 +1061,18 @@ export function AcademyOperations() {
         </ul>
       </section>
     </>}
-  </Page>;
+  </>;
 }
 
-export function TutorReview() {
-  const token = getStoredAdminToken();
+function TutorsPanel({ token }: { token: string }) {
   const [version, setVersion] = useState(0);
-  const tutors = useResource<Profile[]>(token ? "/admin/tutors" : null, token ?? undefined, version);
+  const tutors = useResource<Profile[]>("/admin/tutors", token, version);
   const action = useAction();
-  useSEO({ title: "Tutor review", noindex: true });
-  if (!token || tutors?.unauthorized) return <Page title="Tutor review"><Link to="/admin">Sign in as an administrator</Link></Page>;
-  return <Page title="Tutor review">
-    <Link className={ghostLink} to="/admin">Admin CMS</Link>
+  if (tutors?.unauthorized) return <p className="text-sm text-rose-400">Your session expired. Sign in again.</p>;
+  return <>
     <ErrorText value={action.error ?? tutors?.error} />
-    {!tutors && <p role="status">Loading applications…</p>}
-    {tutors?.data?.length === 0 && <p>No tutor applications yet.</p>}
+    {!tutors && <p role="status" className="text-sm text-neutral-500">Loading applications…</p>}
+    {tutors?.data?.length === 0 && <p className="text-sm text-neutral-400">No tutor applications yet.</p>}
     {tutors?.data?.map((tutor) => <article className={panel} key={tutor.accountId}>
       <h2 className="text-sm font-bold text-white">{tutor.account.fullName} · {tutor.approvalStatus}</h2>
       <p>{tutor.account.email}</p>
@@ -1021,5 +1091,41 @@ export function TutorReview() {
         ))}
       </div>
     </article>)}
+  </>;
+}
+
+export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
+  const token = getStoredAdminToken();
+  const { pathname } = useLocation();
+  const view = pathname.endsWith("/tutors") ? "tutors" : pathname.endsWith("/operations") ? "operations" : "accounts";
+  useSEO({
+    title: view === "tutors" ? "Tutor applications" : view === "operations" ? "Lesson recovery and audit" : "Academy account management",
+    noindex: true,
+  });
+  const tabs = [
+    { id: "accounts", label: "Accounts", to: "/admin", icon: Users },
+    { id: "tutors", label: "Tutor applications", to: "/admin/tutors", icon: GraduationCap },
+    { id: "operations", label: "Lesson recovery & audit", to: "/admin/operations", icon: ShieldCheck },
+  ] as const;
+  return <Page title="Academy Administration" eyebrow="Admin CMS">
+    <nav className="flex flex-wrap items-center gap-1 rounded-2xl border border-neutral-800 bg-neutral-900 p-2 text-xs font-bold">
+      {tabs.map(({ id, label, to, icon: Icon }) => (
+        <Link key={id} to={to} className={`flex items-center gap-1.5 rounded-xl px-3 py-2 transition ${
+          view === id ? "border border-emerald-500/25 bg-emerald-500/10 text-emerald-400" : "border border-transparent text-neutral-300 hover:bg-neutral-800 hover:text-white"
+        }`}>
+          <Icon size={13} />
+          <span>{label}</span>
+        </Link>
+      ))}
+      <Link className="rounded-xl px-3 py-2 text-amber-400 transition hover:bg-amber-500/10" to="/admin/content">Prototype content tools</Link>
+      <button className={`${dangerLink} ml-auto rounded-xl px-3 py-2 transition hover:bg-rose-500/10`} onClick={onLogout}>
+        <LogOut size={13} />
+        <span>Sign out</span>
+      </button>
+    </nav>
+    {!token ? <p className="text-sm text-neutral-400">Sign in as an administrator.</p> :
+      view === "tutors" ? <TutorsPanel token={token} /> :
+      view === "operations" ? <OperationsPanel token={token} /> :
+      <AccountsPanel token={token} />}
   </Page>;
 }
