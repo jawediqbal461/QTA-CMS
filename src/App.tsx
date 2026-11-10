@@ -3,7 +3,8 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-
 import {
   BookOpen, Users, Calendar, Shield, Play, RotateCcw, Sparkles,
   Layers, ExternalLink, HelpCircle, CheckCircle, Flame, Star,
-  LogIn, ChevronDown, GraduationCap, Menu, X, Book, FileText, UserPlus
+  LogIn, ChevronDown, GraduationCap, Menu, X, Book, FileText, UserPlus,
+  AlertTriangle, ArrowLeft
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -873,9 +874,20 @@ export default function App() {
             <Route path="/admin/content" element={
               isAdminAuthenticated ? (
                 <>
-                  <div className="mx-auto flex max-w-5xl flex-wrap gap-4 px-4 pt-4">
-                    <button className="text-emerald-300 underline" onClick={() => navigate("/admin")}>Back to live account management</button>
-                    <span className="text-amber-300">Prototype tools · browser-local data</span>
+                  <div className="mx-auto max-w-5xl px-4 pt-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/20 bg-amber-950/40 px-4 py-3">
+                      <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                        <AlertTriangle size={14} className="shrink-0" />
+                        <span>Prototype tools &mdash; browser-local demo data, not the live academy records</span>
+                      </div>
+                      <button
+                        onClick={() => navigate("/admin")}
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-300 transition hover:bg-amber-500/20"
+                      >
+                        <ArrowLeft size={13} />
+                        <span>Back to live account management</span>
+                      </button>
+                    </div>
                   </div>
                   <AdminCMS
                     curriculums={curriculums}
