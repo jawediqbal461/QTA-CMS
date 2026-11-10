@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { signSession } from "../lib/jwt.js";
 import { recordAudit } from "../lib/audit.js";
 import { requireAuth } from "../middleware/auth.js";
+import { asyncHandler } from "../lib/asyncHandler.js";
 
 export const authRouter = Router();
 
@@ -25,7 +26,7 @@ const bootstrapSchema = z.object({
   adminFullName: z.string().min(2),
 });
 
-authRouter.post("/bootstrap-academy", async (req, res) => {
+authRouter.post("/bootstrap-academy", asyncHandler(async (req, res) => {
   const setupToken = process.env.SETUP_TOKEN;
   if (!setupToken) {
     return res.status(503).json({ error: "Bootstrap is disabled (SETUP_TOKEN not set)" });
@@ -88,14 +89,150 @@ authRouter.post("/bootstrap-academy", async (req, res) => {
   });
 
   res.status(201).json({ token, academy: result.academy });
+}));
+
+// Single-academy MVP: every self-registration joins the one seeded
+// academy. Revisit once Phase 3 (multi-academy SaaS) needs a real
+// academy-selection step.
+async function getDefaultAcademy() {
+  return prisma.academy.findFirst({ orderBy: { createdAt: "asc" } });
+}
+
+const registerGuardianSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(10),
+  fullName: z.string().min(2),
 });
+
+authRouter.post("/register/guardian", asyncHandler(async (req, res) => {
+  const parsed = registerGuardianSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  const { email, password, fullName } = parsed.data;
+
+  const academy = await getDefaultAcademy();
+  if (!academy) {
+    return res.status(503).json({ error: "No academy is configured yet" });
+  }
+  const existing = await prisma.account.findUnique({ where: { email: email.toLowerCase() } });
+  if (existing) {
+    return res.status(409).json({ error: "An account with this email already exists" });
+  }
+
+  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  const account = await prisma.$transaction(async (tx) => {
+    const acc = await tx.account.create({
+      data: { email: email.toLowerCase(), passwordHash, fullName },
+    });
+    await tx.academyMembership.create({
+      data: { academyId: academy.id, accountId: acc.id, role: "GUARDIAN" },
+    });
+    return acc;
+  });
+
+  await recordAudit({
+    actorId: account.id,
+    academyId: academy.id,
+    action: "auth.register.guardian",
+    targetType: "account",
+    targetId: account.id,
+  });
+
+  const token = signSession({ accountId: account.id, academyId: academy.id, role: "GUARDIAN" });
+  res.status(201).json({
+    token,
+    account: {
+      id: account.id,
+      email: account.email,
+      fullName: account.fullName,
+      role: "GUARDIAN",
+      academy: { id: academy.id, name: academy.name, slug: academy.slug },
+    },
+  });
+}));
+
+const registerTutorSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(10),
+  fullName: z.string().min(2),
+  bio: z.string().max(2000).optional(),
+  experienceYears: z.number().int().min(0).max(80),
+  hourlyRate: z.number().positive(),
+  languages: z.array(z.string().min(1)).min(1),
+  specialties: z.array(z.string().min(1)).min(1),
+});
+
+authRouter.post("/register/tutor", asyncHandler(async (req, res) => {
+  const parsed = registerTutorSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  const data = parsed.data;
+
+  const academy = await getDefaultAcademy();
+  if (!academy) {
+    return res.status(503).json({ error: "No academy is configured yet" });
+  }
+  const existing = await prisma.account.findUnique({ where: { email: data.email.toLowerCase() } });
+  if (existing) {
+    return res.status(409).json({ error: "An account with this email already exists" });
+  }
+
+  const passwordHash = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
+  const account = await prisma.$transaction(async (tx) => {
+    const acc = await tx.account.create({
+      data: { email: data.email.toLowerCase(), passwordHash, fullName: data.fullName },
+    });
+    await tx.academyMembership.create({
+      data: { academyId: academy.id, accountId: acc.id, role: "TUTOR" },
+    });
+    // Starts PENDING — an admin must approve before the tutor is public.
+    // That approval workflow itself is out of scope here (Phase 1 backlog
+    // item M02), this just makes sure the flag exists from day one.
+    await tx.tutorProfile.create({
+      data: {
+        accountId: acc.id,
+        academyId: academy.id,
+        specialties: data.specialties,
+        experienceYears: data.experienceYears,
+        bio: data.bio,
+        hourlyRate: data.hourlyRate,
+        languages: data.languages,
+        approvalStatus: "PENDING",
+      },
+    });
+    return acc;
+  });
+
+  await recordAudit({
+    actorId: account.id,
+    academyId: academy.id,
+    action: "auth.register.tutor",
+    targetType: "account",
+    targetId: account.id,
+  });
+
+  const token = signSession({ accountId: account.id, academyId: academy.id, role: "TUTOR" });
+  res.status(201).json({
+    token,
+    account: {
+      id: account.id,
+      email: account.email,
+      fullName: account.fullName,
+      role: "TUTOR",
+      approvalStatus: "PENDING",
+      academy: { id: academy.id, name: academy.name, slug: academy.slug },
+    },
+  });
+}));
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
 
-authRouter.post("/login", async (req, res) => {
+authRouter.post("/login", asyncHandler(async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
@@ -145,9 +282,9 @@ authRouter.post("/login", async (req, res) => {
       academy: { id: membership.academy.id, name: membership.academy.name, slug: membership.academy.slug },
     },
   });
-});
+}));
 
-authRouter.get("/me", requireAuth, async (req, res) => {
+authRouter.get("/me", requireAuth, asyncHandler(async (req, res) => {
   const account = await prisma.account.findUnique({ where: { id: req.session!.accountId } });
   if (!account) {
     return res.status(404).json({ error: "Account not found" });
@@ -159,4 +296,4 @@ authRouter.get("/me", requireAuth, async (req, res) => {
     role: req.session!.role,
     academyId: req.session!.academyId,
   });
-});
+}));

@@ -2,7 +2,11 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { authRouter } from "./routes/auth.js";
+import { adminRouter } from "./routes/admin.js";
+import { tutorRouter } from "./routes/tutor.js";
+import { guardianRouter } from "./routes/guardian.js";
 import { prisma } from "./lib/prisma.js";
+import { asyncHandler } from "./lib/asyncHandler.js";
 
 const app = express();
 
@@ -22,18 +26,21 @@ app.use(express.json());
 // Registered at both paths: the Nginx proxy forwards the full
 // /api/* prefix as-is (see server/README.md), but /health alone is
 // handy for direct checks against 127.0.0.1:4000 on the VPS.
-const healthHandler: express.RequestHandler = async (_req, res) => {
+const healthHandler = asyncHandler(async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ status: "ok", db: "connected" });
   } catch {
     res.status(503).json({ status: "degraded", db: "unreachable" });
   }
-};
+});
 app.get("/health", healthHandler);
 app.get("/api/health", healthHandler);
 
 app.use("/api/auth", authRouter);
+app.use("/api/admin", adminRouter);
+app.use("/api/tutor", tutorRouter);
+app.use("/api/guardian", guardianRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });

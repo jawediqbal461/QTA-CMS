@@ -1,9 +1,9 @@
 # QTA CMS API (Phase 1 backend)
 
 A standalone Node/Express/Prisma API, separate from the Vite frontend in the
-repo root. Talks to a self-hosted Postgres container. This is the first
-slice of Phase 1 — auth (account bootstrap, login) and the full data model.
-Tutor/booking/progress endpoints come next.
+repo root. Talks to a self-hosted Postgres container. This covers
+`PROJECT_PLAN.md` backlog item **M01** (database, identity, authorization) —
+tutor/booking/progress *business* endpoints (M02+) come next.
 
 ## Data model
 
@@ -13,6 +13,32 @@ links, tutor profiles, availability, bookings (with a hard DB-level unique
 constraint preventing a tutor double-booking the same instant), lesson
 sessions, progress entries, curriculum + content revisions, and an
 append-only audit log.
+
+## API endpoints
+
+Auth (`/api/auth`):
+- `POST /bootstrap-academy` — one-time, `SETUP_TOKEN`-gated, creates the
+  first academy + its Academy Admin account.
+- `POST /register/guardian` — email, password, fullName.
+- `POST /register/tutor` — email, password, fullName, bio?, experienceYears,
+  hourlyRate, languages[], specialties[]. Creates the account with a
+  `TutorProfile` in `approvalStatus: PENDING` (approving it is M02).
+- `POST /login` — email, password → `{ token, account }`.
+- `GET /me` — requires `Authorization: Bearer <token>`.
+
+Role-gated (`requireAuth` + `requireRole`, all scoped to the caller's own
+`academyId` — never trust an id from the request body/params alone):
+- `GET /api/admin/accounts` — Academy Admin only. Lists every membership in
+  the academy.
+- `PATCH /api/admin/memberships/:membershipId` — Academy Admin only.
+  `{ status: "ACTIVE" | "SUSPENDED" | "REVOKED" }`. An admin can't revoke
+  their own access. This is the actual mechanism behind "revoked access
+  takes effect": `requireAuth` re-checks membership status against the
+  database on *every* request, not just at login, so flipping this blocks
+  that account's very next API call.
+- `GET /api/tutor/profile` — Tutor only. Own `TutorProfile`.
+- `GET /api/guardian/students` — Guardian only. Own linked students (empty
+  until M03 builds the linking flow itself).
 
 ## Local development
 
