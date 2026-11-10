@@ -15,6 +15,9 @@ export const tutorFields = z.object({
 export const publicTutorSelect = {
   accountId: true, specialties: true, experienceYears: true, bio: true,
   hourlyRate: true, languages: true, account: { select: { fullName: true } },
+  // Weekday only (no start/end time) - enough for a public "available on
+  // Tuesdays" filter without exposing the tutor's exact daily schedule.
+  availabilitySlots: { select: { weekday: true }, distinct: ["weekday"] },
 } satisfies Prisma.TutorProfileSelect;
 
 export function publishedTutorWhere(academyId: string): Prisma.TutorProfileWhereInput {

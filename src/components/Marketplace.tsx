@@ -2,6 +2,7 @@ import { createElement, useEffect, useState, type ReactNode } from "react";
 import {
   ArrowLeft, GraduationCap, LogIn, UserPlus, Users, Sparkles, Star, Clock, Bell,
   CalendarCheck, ChevronRight, LogOut, ShieldCheck, Search, BookOpen, Wallet,
+  Award, Filter, RotateCcw, Check as CheckIcon, Globe, CheckCircle,
 } from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { accountRequest, ApiError, getStoredAdminToken, request } from "../lib/api";
@@ -19,6 +20,7 @@ type Tutor = {
   accountId: string; account: { fullName: string }; bio: string | null;
   experienceYears: number; hourlyRate: string; languages: string[]; specialties: string[];
 };
+type DirectoryTutor = Tutor & { availabilitySlots: { weekday: number }[] };
 type Profile = Tutor & {
   approvalStatus: Approval; qualifications: string | null; updatedAt: string;
   account: { fullName: string; timeZone: string; email?: string }; availabilitySlots: Slot[];
@@ -146,42 +148,271 @@ export function FeaturedTutors() {
   </div>;
 }
 
+function DirectoryTutorCard({ tutor }: { tutor: DirectoryTutor }) {
+  const navigate = useNavigate();
+  return <div className="group relative flex flex-col justify-between overflow-hidden rounded-3xl border border-neutral-800 bg-neutral-900 p-5 shadow-xl transition duration-300 hover:border-neutral-700/80">
+    <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-emerald-500/0 via-emerald-500/20 to-emerald-500/0 opacity-0 transition duration-300 group-hover:opacity-100" />
+    <div className="space-y-4">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3">
+          <div className="relative shrink-0">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-950 text-lg font-black text-emerald-400 transition group-hover:border-emerald-500/50">
+              {tutor.account.fullName.charAt(0).toUpperCase()}
+            </div>
+            <span className="absolute -bottom-1.5 -right-1.5 rounded-full bg-emerald-500 p-0.5 text-neutral-950 shadow">
+              <CheckCircle size={10} className="fill-emerald-500" />
+            </span>
+          </div>
+          <div>
+            <h3 className="font-mono text-[10px] font-bold uppercase tracking-widest text-emerald-400">Graduated Scholar</h3>
+            <h2 className="text-sm font-bold leading-snug text-white transition group-hover:text-emerald-400">{tutor.account.fullName}</h2>
+          </div>
+        </div>
+        <span className="shrink-0 font-mono text-[9px] uppercase text-neutral-500">{tutor.experienceYears} yrs exp.</span>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {tutor.specialties.map((spec) => (
+          <span key={spec} className="rounded border border-neutral-850 bg-neutral-950 px-2 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wide text-neutral-400">{spec}</span>
+        ))}
+      </div>
+      <p className="line-clamp-3 text-xs leading-relaxed text-neutral-400">{tutor.bio}</p>
+      <div className="flex items-center justify-between rounded-xl border border-neutral-850 bg-neutral-950/60 p-2.5 font-mono text-[11px]">
+        <div>
+          <span className="block text-[8px] text-neutral-500">LANGUAGES</span>
+          <span className="font-semibold text-neutral-300">{tutor.languages.join(", ")}</span>
+        </div>
+        <div className="text-right">
+          <span className="block text-[8px] text-neutral-500">HOURLY RATE</span>
+          <span className="text-xs font-extrabold text-emerald-400">${tutor.hourlyRate}/hr</span>
+        </div>
+      </div>
+    </div>
+    <div className="mt-4 grid grid-cols-2 gap-2 border-t border-neutral-850/60 pt-4">
+      <button onClick={() => navigate(`/tutors/${tutor.accountId}`)}
+        className="rounded-xl border border-neutral-700 bg-neutral-800 px-3 py-2 text-xs font-bold text-white transition hover:border-neutral-600 hover:bg-neutral-700">
+        View Profile
+      </button>
+      <button onClick={() => navigate(`/student?tutor=${tutor.accountId}`)}
+        className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-black text-neutral-950 shadow shadow-emerald-500/10 transition hover:bg-emerald-400">
+        Book Trial
+      </button>
+    </div>
+  </div>;
+}
+
 export function PublicTutors() {
   const { slug } = useParams();
-  const tutors = useResource<Tutor[]>("/tutors");
+  const navigate = useNavigate();
+  const tutors = useResource<DirectoryTutor[]>("/tutors");
   const tutor = tutors?.data?.find((entry) => entry.accountId === slug);
   const [query, setQuery] = useState("");
+  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  const [priceRange, setPriceRange] = useState(500);
+  const [sortBy, setSortBy] = useState<"experience" | "rate_low" | "rate_high" | "name">("experience");
   const title = slug ? tutor?.account.fullName ?? "Tutor profile" : "Find a Quran tutor";
-  useSEO({ title, description: tutor?.bio ?? undefined, noindex: !!slug && !tutor });
-  const matching = tutors?.data?.filter((entry) =>
-    [entry.account.fullName, ...entry.languages, ...entry.specialties].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
-  return <Page title={title} eyebrow="Certified Scholars">
-    <ErrorText value={tutors?.error} />
-    {!tutors && <p role="status" className="text-sm text-neutral-500">Loading tutors…</p>}
-    {slug ? (
-      <>
-        <Link className={ghostLink} to="/tutors">
-          <ArrowLeft size={13} />
-          <span>All tutors</span>
-        </Link>
-        {tutor ? <TutorCard tutor={tutor} detail /> : tutors?.data && <p className="text-sm text-neutral-400">This tutor is not listed.</p>}
-      </>
-    ) : (
-      <>
-        <div className="relative max-w-md">
-          <Search size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500" />
-          <input
-            className={`${input} pl-10`} type="search" placeholder="Search by name, language, or subject"
-            value={query} onChange={(event) => setQuery(event.target.value)}
-          />
+  useSEO({
+    title, description: tutor?.bio ?? "Browse certified Quran tutors specializing in Tajweed, Hifz, and Arabic. Filter by rate and weekly availability.",
+    noindex: !!slug && !tutor,
+  });
+
+  const roster = tutors?.data ?? [];
+  const allSpecialties: string[] = Array.from(new Set<string>(roster.flatMap((t) => t.specialties))).sort();
+  const maxRate = Math.max(50, ...roster.map((t) => Number(t.hourlyRate)).filter((n) => Number.isFinite(n)));
+  const filtersActive = !!query || selectedSubjects.length > 0 || selectedDays.length > 0 || priceRange < maxRate || sortBy !== "experience";
+  const resetFilters = () => { setQuery(""); setSelectedSubjects([]); setSelectedDays([]); setPriceRange(500); setSortBy("experience"); };
+
+  const toggleValue = (current: string[], value: string) => current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
+  const toggleDay = (current: number[], value: number) => current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
+
+  const filtered = roster.filter((entry) => {
+    const q = query.trim().toLowerCase();
+    const matchesQuery = !q || [entry.account.fullName, entry.bio ?? "", ...entry.languages, ...entry.specialties].join(" ").toLowerCase().includes(q);
+    const matchesSubjects = selectedSubjects.length === 0 || selectedSubjects.some((s) => entry.specialties.includes(s));
+    const matchesDays = selectedDays.length === 0 || selectedDays.some((d) => entry.availabilitySlots.some((slot) => slot.weekday === d));
+    const matchesPrice = Number(entry.hourlyRate) <= priceRange;
+    return matchesQuery && matchesSubjects && matchesDays && matchesPrice;
+  }).sort((a, b) => {
+    if (sortBy === "experience") return b.experienceYears - a.experienceYears;
+    if (sortBy === "rate_low") return Number(a.hourlyRate) - Number(b.hourlyRate);
+    if (sortBy === "rate_high") return Number(b.hourlyRate) - Number(a.hourlyRate);
+    return a.account.fullName.localeCompare(b.account.fullName);
+  });
+
+  if (slug) {
+    return <Page title={title} eyebrow="Certified Scholars">
+      <ErrorText value={tutors?.error} />
+      {!tutors && <p role="status" className="text-sm text-neutral-500">Loading tutors…</p>}
+      <Link className={ghostLink} to="/tutors">
+        <ArrowLeft size={13} />
+        <span>All tutors</span>
+      </Link>
+      {tutor ? <TutorCard tutor={tutor} detail /> : tutors?.data && <p className="text-sm text-neutral-400">This tutor is not listed.</p>}
+    </Page>;
+  }
+
+  return <div className="mx-auto max-w-7xl space-y-6 px-4 py-10 text-neutral-200">
+    <div className="relative overflow-hidden rounded-3xl border border-neutral-800 bg-gradient-to-r from-emerald-950/30 via-neutral-900 to-neutral-950 p-6 shadow-2xl md:p-8">
+      <div aria-hidden="true" className="pointer-events-none absolute right-0 top-0 h-80 w-80 rounded-full bg-emerald-500/5 blur-[100px]" />
+      <div className="relative flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+        <div className="max-w-3xl space-y-2">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 font-mono text-[10px] font-extrabold uppercase tracking-widest text-emerald-400">
+            <Award size={11} className="text-amber-400" />
+            <span>Verified Academy Scholars</span>
+          </div>
+          <h1 className="text-2xl font-black tracking-tight text-white md:text-3xl">Find Your Perfect Quran Tutor</h1>
+          <p className="text-xs leading-relaxed text-neutral-400 md:text-sm">
+            Select from our network of certified scholars. Filter by subject, lesson rate, and matching weekly availability to fit your schedule.
+          </p>
         </div>
-        {matching?.length === 0 && <p className="text-sm text-neutral-400">No approved tutors match this search.</p>}
-        <div className="grid gap-4 md:grid-cols-2">
-          {matching?.map((entry) => createElement(TutorCard, { key: entry.accountId, tutor: entry }))}
+        <div className="flex shrink-0 gap-2">
+          <button onClick={() => navigate("/quran")}
+            className="flex items-center gap-1.5 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-bold text-neutral-300 transition hover:border-neutral-700 hover:bg-neutral-800">
+            <BookOpen size={13} className="text-emerald-400" />
+            <span>Quran Explorer</span>
+          </button>
+          <button onClick={() => navigate("/student")}
+            className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-extrabold text-neutral-950 transition hover:bg-emerald-400">
+            <span>Student Desk</span>
+            <ChevronRight size={13} />
+          </button>
         </div>
-      </>
-    )}
-  </Page>;
+      </div>
+    </div>
+
+    <div className="overflow-hidden rounded-3xl border border-neutral-800 bg-neutral-900 shadow-2xl">
+      <div className="bg-neutral-950/40 p-4 md:p-6">
+        <div className="flex flex-col gap-4 border-b border-neutral-850 pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-1">
+            <h2 className="flex items-center gap-2 text-lg font-black tracking-tight text-white">
+              <Globe size={16} className="text-emerald-400" />
+              <span>Quran Tutors Registry</span>
+            </h2>
+            <p className="text-xs text-neutral-400">Showing certified scholars with verified academy profiles.</p>
+          </div>
+          <ErrorText value={tutors?.error} />
+          {tutors?.data && (
+            <p className="font-mono text-[11px] text-neutral-400">
+              Showing <strong className="text-emerald-400">{filtered.length}</strong> of {roster.length} scholars
+            </p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 items-start gap-6 pt-6 lg:grid-cols-[280px_1fr]">
+          <aside className="space-y-6 self-start rounded-2xl border border-neutral-800 bg-neutral-900 p-5 lg:sticky lg:top-6">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <h3 className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-white">
+                <Filter size={13} className="text-emerald-400" />
+                <span>Search &amp; Filters</span>
+              </h3>
+              {filtersActive && (
+                <button onClick={resetFilters} className="flex items-center gap-1 font-mono text-[9px] font-black uppercase text-amber-500 transition hover:text-amber-400">
+                  <RotateCcw size={10} />
+                  <span>Reset</span>
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="flex items-center font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                <Search size={10} className="mr-1 text-emerald-400" /> Scholar Keyword
+              </label>
+              <div className="relative">
+                <Search size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-500" />
+                <input type="text" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="e.g. Ahmed, Tajweed…"
+                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 py-2 pl-8 pr-3 text-xs text-white outline-none transition placeholder:text-neutral-500 focus:border-emerald-500/40" />
+              </div>
+            </div>
+
+            {allSpecialties.length > 0 && (
+              <div className="space-y-2.5">
+                <h4 className="font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-400">Subjects</h4>
+                <div className="space-y-1.5">
+                  {allSpecialties.map((subject) => {
+                    const checked = selectedSubjects.includes(subject);
+                    return <button key={subject} type="button" onClick={() => setSelectedSubjects(toggleValue(selectedSubjects, subject))}
+                      className="flex w-full items-center gap-2 py-1 text-left text-xs text-neutral-300 transition hover:text-white">
+                      <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${checked ? "border-emerald-400 bg-emerald-500 text-neutral-950" : "border-neutral-800 bg-neutral-950"}`}>
+                        {checked && <CheckIcon size={11} className="stroke-[3]" />}
+                      </span>
+                      <span className={checked ? "font-bold text-emerald-400" : ""}>{subject}</span>
+                    </button>;
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2.5">
+              <h4 className="font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-400">Weekly Availability</h4>
+              <div className="max-h-40 space-y-1.5 overflow-y-auto pr-1">
+                {days.map((day, weekday) => {
+                  const checked = selectedDays.includes(weekday);
+                  return <button key={day} type="button" onClick={() => setSelectedDays(toggleDay(selectedDays, weekday))}
+                    className="flex w-full items-center gap-2 py-1 text-left text-xs text-neutral-300 transition hover:text-white">
+                    <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${checked ? "border-emerald-400 bg-emerald-500 text-neutral-950" : "border-neutral-800 bg-neutral-950"}`}>
+                      {checked && <CheckIcon size={11} className="stroke-[3]" />}
+                    </span>
+                    <span className={checked ? "font-bold text-emerald-400" : ""}>{day}</span>
+                  </button>;
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                <span>Max Hourly Budget</span>
+                <span className="font-mono text-xs font-black text-emerald-400">${Math.min(priceRange, maxRate)}/hr</span>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <span className="font-mono text-[9px] text-neutral-500">$0</span>
+                <input type="range" min={0} max={maxRate} value={Math.min(priceRange, maxRate)} onChange={(event) => setPriceRange(Number(event.target.value))}
+                  className="h-1 flex-1 cursor-pointer appearance-none rounded-lg bg-neutral-950 accent-emerald-500" />
+                <span className="font-mono text-[9px] text-neutral-500">${maxRate}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-400">Sorting Order</label>
+              <select value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
+                className="w-full cursor-pointer rounded-xl border border-neutral-800 bg-neutral-950 px-2.5 py-2 text-xs text-white outline-none transition focus:border-emerald-500/40">
+                <option value="experience">Most Experienced First</option>
+                <option value="rate_low">Budget (Low to High)</option>
+                <option value="rate_high">Premium (High to Low)</option>
+                <option value="name">Name (A to Z)</option>
+              </select>
+            </div>
+
+            <button onClick={resetFilters}
+              className="flex w-full items-center justify-center gap-1 rounded-xl border border-neutral-800 bg-neutral-950 py-2 text-[11px] font-bold text-neutral-400 transition hover:border-neutral-700 hover:bg-neutral-850 hover:text-white">
+              <RotateCcw size={12} />
+              <span>Reset All Filters</span>
+            </button>
+          </aside>
+
+          <div className="space-y-6">
+            {!tutors ? (
+              <p role="status" className="text-sm text-neutral-500">Loading tutors…</p>
+            ) : filtered.length > 0 ? (
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                {filtered.map((entry) => createElement(DirectoryTutorCard, { key: entry.accountId, tutor: entry }))}
+              </div>
+            ) : (
+              <div className="mx-auto max-w-md space-y-4 rounded-3xl border border-neutral-800 bg-neutral-900 p-12 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-neutral-850 bg-neutral-950 text-amber-500">
+                  <Search size={18} />
+                </div>
+                <h4 className="text-sm font-bold text-white">{roster.length === 0 ? "No approved tutors are listed yet." : "No scholars match your filters"}</h4>
+                {roster.length > 0 && <>
+                  <p className="text-xs leading-relaxed text-neutral-400">Try adjusting your search keywords, raising your hourly budget, or clearing subject filters.</p>
+                  <button onClick={resetFilters} className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-neutral-950 transition hover:bg-emerald-400">Reset All Filters</button>
+                </>}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>;
 }
 
 function profileData(form: FormData) {
