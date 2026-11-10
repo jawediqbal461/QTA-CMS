@@ -1,5 +1,8 @@
 import { createElement, useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, GraduationCap, LogIn, UserPlus, Users } from "lucide-react";
+import {
+  ArrowLeft, GraduationCap, LogIn, UserPlus, Users, Sparkles, Star, Clock, Bell,
+  CalendarCheck, ChevronRight, LogOut, ShieldCheck, Search, BookOpen, Wallet,
+} from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { accountRequest, ApiError, getStoredAdminToken, request } from "../lib/api";
 import { useSEO } from "../hooks/useSEO";
@@ -31,9 +34,12 @@ type Booking = {
   } | null;
 };
 
-const panel = "space-y-4 rounded-xl border border-neutral-700 p-5";
-const button = "rounded bg-emerald-400 px-3 py-2 font-semibold text-neutral-950 disabled:opacity-50";
-const input = "block w-full rounded border border-neutral-600 bg-neutral-900 p-2 text-white";
+const panel = "space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-5 sm:p-6";
+const button = "inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-4 py-2.5 text-xs font-extrabold text-neutral-950 transition disabled:cursor-not-allowed disabled:opacity-50";
+const input = "w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3.5 py-2.5 text-xs text-white placeholder-neutral-600 outline-none transition focus:border-emerald-500/50";
+const badge = "inline-flex items-center rounded-full border border-neutral-800 bg-neutral-950 px-2.5 py-1 text-[10px] font-bold text-neutral-400";
+const ghostLink = "inline-flex items-center gap-1 text-xs font-bold text-emerald-400 transition hover:text-emerald-300";
+const dangerLink = "inline-flex items-center gap-1 text-xs font-bold text-rose-400 transition hover:text-rose-300";
 const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const localTime = (iso: string, timeZone?: string) => new Date(iso).toLocaleString(undefined, {
   dateStyle: "medium", timeStyle: "short", timeZone,
@@ -68,23 +74,59 @@ function useAction() {
 }
 
 function ErrorText({ value }: { value?: string }) {
-  return value ? <p role="alert" className="text-red-300">{value}</p> : null;
+  return value ? (
+    <p role="alert" className="rounded-xl border border-rose-500/25 bg-rose-950/40 px-3.5 py-2.5 text-xs font-medium text-rose-300">
+      {value}
+    </p>
+  ) : null;
 }
 
-function Page({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="mx-auto max-w-5xl space-y-5 px-4 py-10">
-    <h1 className="text-3xl font-bold text-white">{title}</h1>
+function Page({ title, eyebrow, children }: { title: string; eyebrow?: string; children: ReactNode }) {
+  return <section className="mx-auto max-w-5xl space-y-6 px-4 py-10 text-neutral-200">
+    <div className="relative overflow-hidden rounded-3xl border border-neutral-800 bg-gradient-to-r from-emerald-950/30 via-neutral-900 to-neutral-950 p-6 shadow-2xl md:p-8">
+      <div aria-hidden="true" className="pointer-events-none absolute right-0 top-0 h-72 w-72 rounded-full bg-emerald-500/5 blur-[100px] -z-0" />
+      {eyebrow && (
+        <div className="relative mb-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-emerald-400">
+          <Sparkles size={11} />
+          <span>{eyebrow}</span>
+        </div>
+      )}
+      <h1 className="relative text-2xl font-black tracking-tight text-white md:text-4xl">{title}</h1>
+    </div>
     {children}
   </section>;
 }
 
 function TutorCard({ tutor, detail = false }: { tutor: Tutor; detail?: boolean }) {
-  return <article className={panel}>
-    {!detail && <Link className="text-xl font-semibold text-emerald-300" to={`/tutors/${tutor.accountId}`}>{tutor.account.fullName}</Link>}
-    <p>{tutor.specialties.join(", ")} · {tutor.languages.join(", ")}</p>
-    <p>{tutor.experienceYears} years of experience · USD {tutor.hourlyRate} per hour</p>
-    <p className={detail ? "whitespace-pre-wrap" : "line-clamp-3"}>{tutor.bio}</p>
-    <Link className="inline-block text-emerald-300 underline" to={`/student?tutor=${tutor.accountId}`}>Book a lesson</Link>
+  return <article className={`${panel} ${!detail ? "transition hover:border-emerald-500/40" : ""}`}>
+    <div className="flex items-start gap-3">
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-950 text-sm font-black text-emerald-400">
+        {tutor.account.fullName.charAt(0).toUpperCase()}
+      </div>
+      <div className="min-w-0 flex-1">
+        {!detail ? (
+          <Link className="text-base font-bold text-white transition hover:text-emerald-300" to={`/tutors/${tutor.accountId}`}>{tutor.account.fullName}</Link>
+        ) : (
+          <h2 className="text-lg font-bold text-white">{tutor.account.fullName}</h2>
+        )}
+        <div className="mt-1 flex items-center gap-1.5 text-[11px] text-neutral-500">
+          <Star size={11} className="text-amber-400" />
+          <span>{tutor.experienceYears} yrs experience</span>
+        </div>
+      </div>
+      <span className="shrink-0 rounded-full border border-amber-500/20 bg-amber-950 px-2.5 py-1 text-[11px] font-bold text-amber-400">
+        ${tutor.hourlyRate}/hr
+      </span>
+    </div>
+    <div className="flex flex-wrap gap-1.5">
+      {tutor.specialties.map((specialty) => <span key={specialty} className={badge}>{specialty}</span>)}
+    </div>
+    <p className={`text-xs leading-relaxed text-neutral-400 ${detail ? "whitespace-pre-wrap" : "line-clamp-3"}`}>{tutor.bio}</p>
+    <p className="text-[11px] text-neutral-500">{tutor.languages.join(", ")}</p>
+    <Link className={ghostLink} to={`/student?tutor=${tutor.accountId}`}>
+      <span>Book a lesson</span>
+      <ChevronRight size={13} />
+    </Link>
   </article>;
 }
 
@@ -96,7 +138,10 @@ export function FeaturedTutors() {
     <div className="grid gap-4 md:grid-cols-3">
       {tutors?.data?.slice(0, 3).map((tutor) => createElement(TutorCard, { key: tutor.accountId, tutor }))}
     </div>
-    <Link className="text-emerald-300 underline" to="/tutors">View tutor directory</Link>
+    <Link className={ghostLink} to="/tutors">
+      <span>View tutor directory</span>
+      <ChevronRight size={13} />
+    </Link>
   </div>;
 }
 
@@ -109,20 +154,27 @@ export function PublicTutors() {
   useSEO({ title, description: tutor?.bio ?? undefined, noindex: !!slug && !tutor });
   const matching = tutors?.data?.filter((entry) =>
     [entry.account.fullName, ...entry.languages, ...entry.specialties].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
-  return <Page title={title}>
+  return <Page title={title} eyebrow="Certified Scholars">
     <ErrorText value={tutors?.error} />
-    {!tutors && <p role="status">Loading tutors…</p>}
+    {!tutors && <p role="status" className="text-sm text-neutral-500">Loading tutors…</p>}
     {slug ? (
       <>
-        <Link className="text-emerald-300 underline" to="/tutors">All tutors</Link>
-        {tutor ? <TutorCard tutor={tutor} detail /> : tutors?.data && <p>This tutor is not listed.</p>}
+        <Link className={ghostLink} to="/tutors">
+          <ArrowLeft size={13} />
+          <span>All tutors</span>
+        </Link>
+        {tutor ? <TutorCard tutor={tutor} detail /> : tutors?.data && <p className="text-sm text-neutral-400">This tutor is not listed.</p>}
       </>
     ) : (
       <>
-        <label className="block max-w-md">Search by name, language, or subject
-          <input className={input} type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
-        </label>
-        {matching?.length === 0 && <p>No approved tutors match this search.</p>}
+        <div className="relative max-w-md">
+          <Search size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500" />
+          <input
+            className={`${input} pl-10`} type="search" placeholder="Search by name, language, or subject"
+            value={query} onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+        {matching?.length === 0 && <p className="text-sm text-neutral-400">No approved tutors match this search.</p>}
         <div className="grid gap-4 md:grid-cols-2">
           {matching?.map((entry) => createElement(TutorCard, { key: entry.accountId, tutor: entry }))}
         </div>
@@ -159,7 +211,7 @@ function AccountForm({ role, register, onSession }: { role: Role; register: bool
   const query = params.toString() ? `?${params.toString()}` : "";
   if (verificationSent) return <div className="space-y-4 rounded-xl border border-emerald-500/30 p-4">
     <p role="status">Check your email for a verification link. Verify your address before signing in.</p>
-    <Link className="text-emerald-300 underline" to={paths.login + query}>Continue to sign in</Link>
+    <Link className={ghostLink} to={paths.login + query}>Continue to sign in</Link>
   </div>;
   return <form className="space-y-4 text-xs [&_label]:space-y-1.5 [&_label]:font-bold [&_label]:text-neutral-300 [&_label>input:not([type=checkbox])]:rounded-xl [&_label>input:not([type=checkbox])]:border-neutral-800 [&_label>input:not([type=checkbox])]:bg-neutral-950 [&_label>input:not([type=checkbox])]:px-3.5 [&_label>input:not([type=checkbox])]:py-2.5 [&_label>textarea]:rounded-xl [&_label>textarea]:border-neutral-800 [&_label>textarea]:bg-neutral-950 [&_input]:focus-visible:outline-emerald-500 [&_textarea]:focus-visible:outline-emerald-500" onSubmit={(event) => {
     event.preventDefault();
@@ -200,10 +252,10 @@ function AccountForm({ role, register, onSession }: { role: Role; register: bool
       <Link className="text-emerald-300 hover:underline" to={(register ? paths.login : paths.signup) + query}>
         {register ? "Already registered? Sign in" : "Create an account"}
       </Link>
-      {role !== "TUTOR" && <Link className="text-emerald-300 underline" to={accountPaths[role === "STUDENT" ? "GUARDIAN" : "STUDENT"].login + query}>
+      {role !== "TUTOR" && <Link className={ghostLink} to={accountPaths[role === "STUDENT" ? "GUARDIAN" : "STUDENT"].login + query}>
         {role === "STUDENT" ? "Sign in as a guardian" : "Sign in as a student"}
       </Link>}
-      {register && role === "STUDENT" && <Link className="text-emerald-300 underline" to={accountPaths.GUARDIAN.signup + query}>Register as a guardian</Link>}
+      {register && role === "STUDENT" && <Link className={ghostLink} to={accountPaths.GUARDIAN.signup + query}>Register as a guardian</Link>}
     </div>
   </form>;
 }
@@ -271,18 +323,20 @@ export function AccountPortal({ role, register = false, login = false }: { role:
   if (!token || session?.unauthorized || (session?.data && session.data.role !== role)) {
     return <Navigate replace to={paths.login + query} />;
   }
-  return <Page title={title}>
-    <nav aria-label="Desk sections" className="flex flex-wrap items-center gap-4 rounded-xl border border-neutral-700 p-3 text-sm">
-      <a href="#desk-overview" className="text-emerald-300">Overview</a>
-      <a href="#desk-lessons" className="text-emerald-300">Lessons</a>
-      <a href="#desk-profile" className="text-emerald-300">My profile</a>
-      <a href="#desk-notifications" className="text-emerald-300">Notifications</a>
-      <button className="ml-auto text-emerald-300 underline" onClick={signOut}>Sign out</button>
+  return <Page title={title} eyebrow={session?.data ? `Welcome, ${session.data.fullName}` : paths.label}>
+    <nav aria-label="Desk sections" className="flex flex-wrap items-center gap-1 rounded-2xl border border-neutral-800 bg-neutral-900 p-2 text-xs font-bold">
+      <a href="#desk-overview" className="rounded-xl px-3 py-2 text-neutral-300 transition hover:bg-neutral-800 hover:text-white">Overview</a>
+      <a href="#desk-lessons" className="rounded-xl px-3 py-2 text-neutral-300 transition hover:bg-neutral-800 hover:text-white">Lessons</a>
+      <a href="#desk-profile" className="rounded-xl px-3 py-2 text-neutral-300 transition hover:bg-neutral-800 hover:text-white">My profile</a>
+      <a href="#desk-notifications" className="rounded-xl px-3 py-2 text-neutral-300 transition hover:bg-neutral-800 hover:text-white">Notifications</a>
+      <button className={`${dangerLink} ml-auto rounded-xl px-3 py-2 transition hover:bg-rose-500/10`} onClick={signOut}>
+        <LogOut size={13} />
+        <span>Sign out</span>
+      </button>
     </nav>
     <ErrorText value={session?.error} />
-    {!session && <p role="status">Checking session…</p>}
+    {!session && <p role="status" className="text-sm text-neutral-500">Checking session…</p>}
     {session?.data && <>
-      <p className="text-neutral-300">Welcome, {session.data.fullName}</p>
       {role === "TUTOR" ? <TutorWorkspace token={token} profileVersion={profileVersion} deskVersion={deskVersion}
         timeZone={session.data.timeZone} refreshAccount={() => setProfileVersion((value) => value + 1)} />
         : <GuardianWorkspace token={token} role={role} preferredTutor={params.get("tutor") ?? ""}
@@ -334,7 +388,7 @@ function DeskProfile({ token, role, profile, refresh }: {
       refresh();
     });
   }}>
-    <h2 className="text-xl font-semibold">My profile</h2>
+    <h2 className="text-sm font-bold text-white">My profile</h2>
     <p className="break-words text-neutral-400">{profile.email} · Verified email</p>
     <label className="block">Full name<input className={input} name="fullName" required minLength={2} maxLength={120} defaultValue={profile.fullName} /></label>
     {role !== "TUTOR" && <label className="block">IANA time zone<input className={input} name="timeZone" required defaultValue={profile.timeZone} /></label>}
@@ -352,8 +406,12 @@ function DeskNotifications({ token, timeZone, deskVersion }: { token: string; ti
   const unread = alerts?.data?.filter((alert) => !alert.readAt).length ?? 0;
   return <section id="desk-notifications" className={`${panel} scroll-mt-24`}>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h2 className="text-xl font-semibold">Notifications {unread ? `· ${unread} unread` : ""}</h2>
-      {unread > 0 && <button className="text-emerald-300 underline" disabled={action.busy} onClick={() => {
+      <h2 className="flex items-center gap-2 text-sm font-bold text-white">
+        <Bell size={15} className="text-emerald-400" />
+        <span>Notifications</span>
+        {unread > 0 && <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-extrabold text-neutral-950">{unread}</span>}
+      </h2>
+      {unread > 0 && <button className={ghostLink} disabled={action.busy} onClick={() => {
         void action.run(async () => {
           await accountRequest("/notifications/read", token, "PATCH");
           setVersion((value) => value + 1);
@@ -361,12 +419,12 @@ function DeskNotifications({ token, timeZone, deskVersion }: { token: string; ti
       }}>Mark all as read</button>}
     </div>
     <ErrorText value={alerts?.error ?? action.error} />
-    {alerts?.data?.length === 0 && <p>No class notifications yet.</p>}
+    {alerts?.data?.length === 0 && <p className="text-sm text-neutral-400">No class notifications yet.</p>}
     <ul className="space-y-3">
-      {alerts?.data?.map((alert) => <li className={`rounded-lg border p-3 ${alert.readAt ? "border-neutral-800" : "border-emerald-500/40"}`} key={alert.id}>
-        <p className="font-semibold">{alert.title}</p>
-        <p>{alert.message}</p>
-        <time className="text-sm text-neutral-400" dateTime={alert.visibleAt}>{localTime(alert.visibleAt, timeZone)}</time>
+      {alerts?.data?.map((alert) => <li className={`rounded-xl border p-3 ${alert.readAt ? "border-neutral-800" : "border-emerald-500/40 bg-emerald-500/5"}`} key={alert.id}>
+        <p className="text-xs font-bold text-white">{alert.title}</p>
+        <p className="text-xs text-neutral-400">{alert.message}</p>
+        <time className="text-[11px] text-neutral-500" dateTime={alert.visibleAt}>{localTime(alert.visibleAt, timeZone)}</time>
       </li>)}
     </ul>
   </section>;
@@ -395,19 +453,28 @@ function DeskOverview({ bookings, role, token, timeZone }: { bookings?: Booking[
   }
   return <section id="desk-overview" className="grid scroll-mt-24 gap-4 md:grid-cols-2">
     <div className={panel}>
-      <h2 className="text-xl font-semibold">Upcoming classes</h2>
-      {!bookings ? <p>Loading classes…</p> : upcoming.length ? <>
-        <p>{upcoming.length} scheduled</p>
+      <h2 className="flex items-center gap-2 text-sm font-bold text-white">
+        <CalendarCheck size={15} className="text-emerald-400" />
+        <span>Upcoming classes</span>
+      </h2>
+      {!bookings ? <p className="text-sm text-neutral-500">Loading classes…</p> : upcoming.length ? <>
+        <p className={badge}>{upcoming.length} scheduled</p>
         <LessonDetails booking={upcoming[0]} timeZone={timeZone} />
         <LessonJoin booking={upcoming[0]} token={token} role={role} timeZone={timeZone} />
-        <a className="text-emerald-300 underline" href="#desk-lessons">View lessons</a>
-      </> : <p>No upcoming classes.</p>}
+        <a className={ghostLink} href="#desk-lessons">
+          <span>View lessons</span>
+          <ChevronRight size={13} />
+        </a>
+      </> : <p className="text-sm text-neutral-400">No upcoming classes.</p>}
     </div>
     <div className={panel}>
-      <h2 className="text-xl font-semibold">{role === "TUTOR" ? "My learners" : "My teachers"}</h2>
-      {!bookings ? <p>Loading…</p> : people.size === 0 ? <p>Contacts appear here after a lesson is booked.</p> :
-        <ul className="space-y-2">{Array.from(people, ([id, name]) => <li key={id}>
-          {role === "TUTOR" ? name : <Link className="text-emerald-300 underline" to={`/tutors/${id}`}>{name}</Link>}
+      <h2 className="flex items-center gap-2 text-sm font-bold text-white">
+        <Users size={15} className="text-emerald-400" />
+        <span>{role === "TUTOR" ? "My learners" : "My teachers"}</span>
+      </h2>
+      {!bookings ? <p className="text-sm text-neutral-500">Loading…</p> : people.size === 0 ? <p className="text-sm text-neutral-400">Contacts appear here after a lesson is booked.</p> :
+        <ul className="space-y-2 text-xs text-neutral-300">{Array.from(people, ([id, name]) => <li key={id}>
+          {role === "TUTOR" ? name : <Link className={ghostLink} to={`/tutors/${id}`}>{name}</Link>}
         </li>)}</ul>}
     </div>
   </section>;
@@ -540,8 +607,11 @@ function TutorWorkspace({ token, profileVersion, deskVersion, timeZone, refreshA
     <ErrorText value={profile?.error ?? bookings?.error} />
     {!profile && <p role="status">Loading profile…</p>}
     <section id="desk-lessons" className={`${panel} scroll-mt-24`}>
-      <h2 className="text-xl font-semibold">Your lessons</h2>
-      {bookings?.data?.length === 0 && <p>No lessons booked yet.</p>}
+      <h2 className="flex items-center gap-2 text-sm font-bold text-white">
+        <CalendarCheck size={15} className="text-emerald-400" />
+        <span>Your lessons</span>
+      </h2>
+      {bookings?.data?.length === 0 && <p className="text-sm text-neutral-400">No lessons booked yet.</p>}
       {orderedLessons(bookings?.data).map((booking) => <article className={panel} key={booking.id}>
         <LessonDetails booking={booking} timeZone={timeZone} />
         <LessonActions booking={booking} token={token} role="TUTOR" timeZone={timeZone} refresh={() => setVersion((value) => value + 1)} />
@@ -570,7 +640,7 @@ function TutorEditor({ profile, token, refresh }: { profile: Profile; token: str
       const data = profileData(new FormData(event.currentTarget));
       void profileAction.run(async () => { await accountRequest("/tutor/profile", token, "PUT", data); refresh(); });
     }}>
-      <h2 className="text-xl font-semibold">{profile.account.fullName} · {profile.approvalStatus}</h2>
+      <h2 className="text-sm font-bold text-white">{profile.account.fullName} · {profile.approvalStatus}</h2>
       <p>Submitting profile changes removes your listing until an admin approves the new profile.</p>
       <ProfileFields profile={profile} />
       <ErrorText value={profileAction.error} />
@@ -581,7 +651,7 @@ function TutorEditor({ profile, token, refresh }: { profile: Profile; token: str
       const timeZone = String(new FormData(event.currentTarget).get("timeZone"));
       void availabilityAction.run(async () => { await accountRequest("/tutor/availability", token, "PUT", { timeZone, slots }); refresh(); });
     }}>
-      <h2 className="text-xl font-semibold">Weekly availability</h2>
+      <h2 className="text-sm font-bold text-white">Weekly availability</h2>
       <label className="block">IANA time zone (for example Asia/Karachi)
         <input className={input} name="timeZone" required defaultValue={profile.account.timeZone} />
       </label>
@@ -599,12 +669,12 @@ function TutorEditor({ profile, token, refresh }: { profile: Profile; token: str
             const endTime = event.target.value;
             setSlots(slots.map((entry, i) => i === index ? { ...entry, endTime } : entry));
           }} />
-          <button type="button" className="text-emerald-300 underline" onClick={() => setSlots(slots.filter((_, i) => i !== index))}>Remove window</button>
+          <button type="button" className={ghostLink} onClick={() => setSlots(slots.filter((_, i) => i !== index))}>Remove window</button>
         </div>
       ))}
       <ErrorText value={availabilityAction.error} />
       <div className="flex gap-4">
-        <button type="button" className="text-emerald-300 underline" disabled={suspended || slots.length >= 42} onClick={() => setSlots([...slots, { weekday: 1, startTime: "09:00", endTime: "12:00" }])}>Add window</button>
+        <button type="button" className={ghostLink} disabled={suspended || slots.length >= 42} onClick={() => setSlots([...slots, { weekday: 1, startTime: "09:00", endTime: "12:00" }])}>Add window</button>
         <button className={button} disabled={suspended || availabilityAction.busy}>Save availability</button>
       </div>
     </form>
@@ -640,7 +710,7 @@ function GuardianWorkspace({ token, role, preferredTutor, deskVersion, timeZone 
         refresh();
       });
     }}>
-      <h2 className="text-xl font-semibold">Learners</h2>
+      <h2 className="text-sm font-bold text-white">Learners</h2>
       <ErrorText value={students?.error ?? learnerAction.error} />
       {students?.data?.map((student) => <p key={student.id}>{student.fullName}</p>)}
       <label className="block">Learner name<input className={input} name="fullName" required minLength={2} maxLength={120} /></label>
@@ -669,7 +739,7 @@ function GuardianWorkspace({ token, role, preferredTutor, deskVersion, timeZone 
         } finally { refresh(); }
       });
     }}>
-      <h2 className="text-xl font-semibold">{reschedule ? "Reschedule lesson" : "Book a 45-minute lesson"}</h2>
+      <h2 className="text-sm font-bold text-white">{reschedule ? "Reschedule lesson" : "Book a 45-minute lesson"}</h2>
       {reschedule ? (
         <p>{reschedule.student.fullName} · {reschedule.tutor?.account.fullName}</p>
       ) : (
@@ -697,11 +767,11 @@ function GuardianWorkspace({ token, role, preferredTutor, deskVersion, timeZone 
       <ErrorText value={bookingAction.error ?? slots?.error ?? tutors?.error ?? students?.error} />
       <div className="flex gap-4">
         <button className={button} disabled={bookingAction.busy || !slots?.data?.length || (!reschedule && !students?.data?.length)}>{reschedule ? "Save new time" : "Confirm booking"}</button>
-        {reschedule && <button type="button" className="text-emerald-300 underline" onClick={() => setReschedule(undefined)}>Keep original time</button>}
+        {reschedule && <button type="button" className={ghostLink} onClick={() => setReschedule(undefined)}>Keep original time</button>}
       </div>
     </form>
     <section id="desk-lessons" className={`${panel} scroll-mt-24`}>
-      <h2 className="text-xl font-semibold">Your lessons</h2>
+      <h2 className="text-sm font-bold text-white">Your lessons</h2>
       <ErrorText value={bookings?.error} />
       {bookings?.data?.length === 0 && <p>No lessons booked yet.</p>}
       {orderedLessons(bookings?.data).map((booking) => (
@@ -710,8 +780,8 @@ function GuardianWorkspace({ token, role, preferredTutor, deskVersion, timeZone 
           <LessonActions booking={booking} token={token} role={role} timeZone={timeZone} />
           {["BOOKED", "RESCHEDULED"].includes(booking.status) && new Date(booking.scheduledAtUtc).getTime() > Date.now() && (
             <div className="flex gap-4">
-              <button className="text-emerald-300 underline" disabled={bookingAction.busy} onClick={() => setReschedule(booking)}>Reschedule</button>
-              <button className="text-red-300 underline" disabled={bookingAction.busy} onClick={() => {
+              <button className={ghostLink} disabled={bookingAction.busy} onClick={() => setReschedule(booking)}>Reschedule</button>
+              <button className={dangerLink} disabled={bookingAction.busy} onClick={() => {
                 if (!window.confirm("Cancel this lesson?")) return;
                 void bookingAction.run(async () => {
                   await accountRequest(`/guardian/bookings/${booking.id}`, token, "PATCH", { action: "cancel", expectedStart: booking.scheduledAtUtc });
@@ -753,44 +823,67 @@ export function AccountManagement({ onLogout }: { onLogout: () => void }) {
     (!role || entry.role === role) &&
     [entry.account.fullName, entry.account.email, entry.account.id].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
   const refresh = () => setVersion((value) => value + 1);
-  return <Page title="Academy Administration">
-    <div className="flex flex-wrap gap-4">
-      <Link className="text-emerald-300 underline" to="/admin/tutors">Tutor applications</Link>
-      <Link className="text-emerald-300 underline" to="/admin/operations">Lesson recovery and audit</Link>
-      <Link className="text-neutral-300 underline" to="/admin/content">Prototype content tools</Link>
-      <button className="text-red-300 underline" onClick={onLogout}>Sign out</button>
-    </div>
+  return <Page title="Academy Administration" eyebrow="Admin CMS">
+    <nav className="flex flex-wrap items-center gap-1 rounded-2xl border border-neutral-800 bg-neutral-900 p-2 text-xs font-bold">
+      <Link className="rounded-xl px-3 py-2 text-neutral-300 transition hover:bg-neutral-800 hover:text-white" to="/admin/tutors">Tutor applications</Link>
+      <Link className="rounded-xl px-3 py-2 text-neutral-300 transition hover:bg-neutral-800 hover:text-white" to="/admin/operations">Lesson recovery &amp; audit</Link>
+      <Link className="rounded-xl px-3 py-2 text-amber-400 transition hover:bg-amber-500/10" to="/admin/content">Prototype content tools</Link>
+      <button className={`${dangerLink} ml-auto rounded-xl px-3 py-2 transition hover:bg-rose-500/10`} onClick={onLogout}>
+        <LogOut size={13} />
+        <span>Sign out</span>
+      </button>
+    </nav>
     <div className="grid gap-3 sm:grid-cols-3">
-      {(["TUTOR", "STUDENT", "GUARDIAN"] as const).map((key) => <button type="button" key={key}
-        className={`${panel} text-left`} onClick={() => setRole(role === key ? "" : key)} aria-pressed={role === key}>
-        <span className="block text-xs text-neutral-400">Active {accountPaths[key].label.toLowerCase()} accounts</span>
-        <span className="block text-2xl font-bold">{result?.data ? accounts.filter((entry) => entry.role === key && entry.status === "ACTIVE").length : "—"}</span>
-      </button>)}
+      {(["TUTOR", "STUDENT", "GUARDIAN"] as const).map((key) => {
+        const Icon = key === "TUTOR" ? GraduationCap : key === "STUDENT" ? BookOpen : Users;
+        const active = role === key;
+        return <button type="button" key={key}
+          className={`${panel} text-left transition ${active ? "border-emerald-500/50 bg-emerald-500/5" : "hover:border-neutral-700"}`}
+          onClick={() => setRole(active ? "" : key)} aria-pressed={active}>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">Active {accountPaths[key].label.toLowerCase()}s</span>
+            <Icon size={15} className={active ? "text-emerald-400" : "text-neutral-600"} />
+          </div>
+          <span className="block text-3xl font-black text-white">{result?.data ? accounts.filter((entry) => entry.role === key && entry.status === "ACTIVE").length : "—"}</span>
+        </button>;
+      })}
     </div>
     <div className="grid gap-3 sm:grid-cols-2">
-      <label>Search by name, email, or account ID<input type="search" className={input} value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-      <label>Account role<select className={input} value={role} onChange={(event) => setRole(event.target.value)}>
-        <option value="">All roles</option>
-        <option value="TUTOR">Teachers</option><option value="STUDENT">Students</option><option value="GUARDIAN">Guardians</option>
-      </select></label>
+      <label className="block space-y-1.5 text-xs font-bold text-neutral-300">
+        Search by name, email, or account ID
+        <div className="relative">
+          <Search size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500" />
+          <input type="search" className={`${input} pl-10`} value={query} onChange={(event) => setQuery(event.target.value)} />
+        </div>
+      </label>
+      <label className="block space-y-1.5 text-xs font-bold text-neutral-300">Account role
+        <select className={input} value={role} onChange={(event) => setRole(event.target.value)}>
+          <option value="">All roles</option>
+          <option value="TUTOR">Teachers</option><option value="STUDENT">Students</option><option value="GUARDIAN">Guardians</option>
+        </select>
+      </label>
     </div>
     <ErrorText value={action.error ?? result?.error} />
-    <p role="status" className="text-emerald-300">{notice}</p>
-    {!result && token && <p role="status">Loading accounts…</p>}
-    {result?.data && !visible.length && <p>No matching accounts.</p>}
+    {notice && <p role="status" className="rounded-xl border border-emerald-500/25 bg-emerald-950/40 px-3.5 py-2.5 text-xs font-medium text-emerald-300">{notice}</p>}
+    {!result && token && <p role="status" className="text-sm text-neutral-500">Loading accounts…</p>}
+    {result?.data && !visible.length && <p className="text-sm text-neutral-400">No matching accounts.</p>}
     {visible.map(({ account, membershipId, role: kind, status }) => (
       <article key={membershipId} className={panel}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 break-words">
-            <h2 className="text-xl font-semibold">{account.fullName}</h2>
-            <p>{accountPaths[kind].label} · {status}{account.tutorProfile ? ` · Profile ${account.tutorProfile.approvalStatus}` : ""}</p>
-            <p>{account.managedLearner ? "Guardian-managed learner" : account.email}</p>
-            <p className="text-sm text-neutral-400">Account ID: <code>{account.id}</code></p>
-            {account.studentLinks.length > 0 && <p className="text-sm text-neutral-400">
+            <h2 className="text-base font-bold text-white">{account.fullName}</h2>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <span className={badge}>{accountPaths[kind].label}</span>
+              <span className={`${badge} ${status === "ACTIVE" ? "border-emerald-500/25 text-emerald-400" : status === "SUSPENDED" ? "border-amber-500/25 text-amber-400" : "border-rose-500/25 text-rose-400"}`}>{status}</span>
+              {account.tutorProfile && <span className={badge}>Profile {account.tutorProfile.approvalStatus}</span>}
+            </div>
+            <p className="mt-2 text-xs text-neutral-400">{account.managedLearner ? "Guardian-managed learner" : account.email}</p>
+            <p className="text-[11px] text-neutral-600">Account ID: <code>{account.id}</code></p>
+            {account.studentLinks.length > 0 && <p className="text-[11px] text-neutral-500">
               Guardian: {account.studentLinks.map(({ guardian }) => guardian.fullName).join(", ")}
             </p>}
           </div>
-          <button className="text-emerald-300 underline" type="button" onClick={() => setSelected(selected === membershipId ? "" : membershipId)}>
+          <button className={ghostLink} type="button" onClick={() => setSelected(selected === membershipId ? "" : membershipId)}>
             {selected === membershipId ? "Close profile" : "View and edit profile"}
           </button>
         </div>
@@ -808,16 +901,16 @@ export function AccountManagement({ onLogout }: { onLogout: () => void }) {
             refresh();
           });
         }}>
-          <label className="block">Full name<input name="fullName" className={input} required minLength={2} maxLength={120} defaultValue={account.fullName} /></label>
-          {kind !== "TUTOR" && <label className="block">IANA time zone<input name="timeZone" className={input} required defaultValue={account.timeZone} /></label>}
+          <label className="block space-y-1.5 text-xs font-bold text-neutral-300">Full name<input name="fullName" className={input} required minLength={2} maxLength={120} defaultValue={account.fullName} /></label>
+          {kind !== "TUTOR" && <label className="block space-y-1.5 text-xs font-bold text-neutral-300">IANA time zone<input name="timeZone" className={input} required defaultValue={account.timeZone} /></label>}
           {account.tutorProfile && <ProfileFields profile={account.tutorProfile} />}
           <button className={button} disabled={action.busy}>Save profile</button>
         </form>}
-        <div className="flex flex-wrap gap-4">
+        <div className="flex flex-wrap gap-2 border-t border-neutral-800 pt-3">
           {([["ACTIVE", "Restore access"], ["SUSPENDED", "Suspend"], ["REVOKED", "Remove from academy"]] as const)
             .filter(([next]) => next !== status && !(status === "REVOKED" && next === "SUSPENDED"))
             .map(([next, label]) => <button type="button" key={next} disabled={action.busy}
-              className={next === "ACTIVE" ? "text-emerald-300 underline" : "text-red-300 underline"}
+              className={`rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${next === "ACTIVE" ? "text-emerald-400 hover:bg-emerald-500/10" : "text-rose-400 hover:bg-rose-500/10"}`}
               onClick={() => {
                 if (!token || (next !== "ACTIVE" && !window.confirm(`${label} for ${account.fullName}? Booking and audit history will be kept.`))) return;
                 setNotice("");
@@ -849,14 +942,14 @@ export function AcademyOperations() {
   </Page>;
   return <Page title="Academy operations">
     <div className="flex gap-4">
-      <Link className="text-emerald-300 underline" to="/admin">Admin CMS</Link>
-      <button className="text-emerald-300 underline" onClick={() => setVersion((value) => value + 1)}>Refresh queue</button>
+      <Link className={ghostLink} to="/admin">Admin CMS</Link>
+      <button className={ghostLink} onClick={() => setVersion((value) => value + 1)}>Refresh queue</button>
     </div>
     <ErrorText value={action.error ?? operations?.error} />
     {!operations && <p role="status">Loading operations…</p>}
     {operations?.data && <>
       <section className={panel}>
-        <h2 className="text-xl font-semibold">Unresolved past lessons</h2>
+        <h2 className="text-sm font-bold text-white">Unresolved past lessons</h2>
         {operations.data.missed.length === 0 && <p>No lessons need review.</p>}
         {operations.data.missed.map((booking) => (
           <form key={booking.id} className="space-y-3 border-t border-neutral-700 pt-4" onSubmit={(event) => {
@@ -882,7 +975,7 @@ export function AcademyOperations() {
         ))}
       </section>
       <section className={panel}>
-        <h2 className="text-xl font-semibold">Recent audit activity</h2>
+        <h2 className="text-sm font-bold text-white">Recent audit activity</h2>
         {operations.data.audit.length === 0 && <p>No events recorded.</p>}
         <ul className="space-y-3">
           {operations.data.audit.map((event) => (
@@ -906,12 +999,12 @@ export function TutorReview() {
   useSEO({ title: "Tutor review", noindex: true });
   if (!token || tutors?.unauthorized) return <Page title="Tutor review"><Link to="/admin">Sign in as an administrator</Link></Page>;
   return <Page title="Tutor review">
-    <Link className="text-emerald-300 underline" to="/admin">Admin CMS</Link>
+    <Link className={ghostLink} to="/admin">Admin CMS</Link>
     <ErrorText value={action.error ?? tutors?.error} />
     {!tutors && <p role="status">Loading applications…</p>}
     {tutors?.data?.length === 0 && <p>No tutor applications yet.</p>}
     {tutors?.data?.map((tutor) => <article className={panel} key={tutor.accountId}>
-      <h2 className="text-xl font-semibold">{tutor.account.fullName} · {tutor.approvalStatus}</h2>
+      <h2 className="text-sm font-bold text-white">{tutor.account.fullName} · {tutor.approvalStatus}</h2>
       <p>{tutor.account.email}</p>
       <p>{tutor.specialties.join(", ")} · {tutor.languages.join(", ")} · {tutor.experienceYears} years · USD {tutor.hourlyRate}/hour</p>
       <p className="whitespace-pre-wrap">{tutor.bio}</p>
