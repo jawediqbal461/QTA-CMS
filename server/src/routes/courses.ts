@@ -88,6 +88,15 @@ coursesRouter.get("/tutor/my", asyncHandler(async (req, res) => {
   res.json(courses);
 }));
 
+coursesRouter.get("/tutor/enrollments", asyncHandler(async (req, res) => {
+  const { accountId, academyId } = req.session!;
+  res.json(await prisma.courseEnrollment.findMany({
+    where: { academyId, course: { tutorId: accountId }, status: { not: "CANCELLED" } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, status: true, createdAt: true, course: { select: { id: true, title: true } }, student: { select: { fullName: true } } },
+  }));
+}));
+
 coursesRouter.post("/tutor/my", asyncHandler(async (req, res) => {
   const { accountId, academyId } = req.session!;
   const parsed = courseSchema.safeParse(req.body);
@@ -118,7 +127,8 @@ coursesRouter.patch("/tutor/my/:id", asyncHandler(async (req, res) => {
     return res.status(409).json({ error: "Only DRAFT or CHANGES_REQUESTED courses can be edited." });
   }
 
-  const parsed = courseSchema.partial().safeParse(req.body);
+  // Re-declare priceCurrency without its default so a partial update cannot reset it to USD.
+  const parsed = courseSchema.extend({ priceCurrency: z.string().trim().length(3) }).partial().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { modules, ...fields } = parsed.data;
 

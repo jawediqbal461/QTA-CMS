@@ -6,7 +6,9 @@ import {
   Users, Calendar, PieChart, Lock, Sparkles, Bold, Italic, Heading, Quote, List, ListOrdered, Image,
   GraduationCap, ShieldCheck, UserCheck, Inbox
 } from "lucide-react";
-import { Curriculum, Tutor, ARCHITECTURE_INFO, Surah, Juz, BlogPost, INITIAL_SURAHS, INITIAL_JUZ, INITIAL_BLOGS, REALISTIC_QURAN_VERSES, slugify } from "../data/mockData";
+import { ARCHITECTURE_INFO, Surah, Juz, BlogPost, INITIAL_SURAHS, INITIAL_JUZ } from "../data/mockData";
+import quranIndex from "../data/quran-legacy/index.json";
+import type { SurahOverride } from "../lib/content";
 import Breadcrumbs from "./Breadcrumbs";
 import { useSEO } from "../hooks/useSEO";
 import { accountRequest } from "../lib/api";
@@ -14,17 +16,18 @@ import { AccountsPanel, TutorsPanel, TutorProfilesPanel, OperationsPanel, Reques
 import { ResourcesAdminPanel } from "./ResourcesPage";
 import { PaymentsAdminPanel } from "./PricingPage";
 import { CourseApprovalPanel } from "./CoursesPage";
+import { EnrollmentsAdminPanel } from "./Enrollments";
+
+// The shipped Quran text, loaded on demand so the surah editor starts from the real verses.
+const staticVersePages = import.meta.glob<{ default: { ayahs: Array<{ numberInSurah: number; arabic: string; translation: string }> } }>(
+  "../data/quran-verses/surah-*.json",
+);
 
 type AdminSubTab = "overview" | "architecture" | "sitemap" | "database" | "curriculum" | "profiles" | "quran_crud" | "blog_crud"
   | "accounts" | "tutor_applications" | "tutor_profiles" | "requests" | "resources" | "payments" | "courses" | "lesson_recovery" | "analytics"
-  | "demo_rooms" | "quiz_results";
+  | "demo_rooms" | "quiz_results" | "enrollments";
 
 interface AdminCMSProps {
-  curriculums: Curriculum[];
-  tutors: Tutor[];
-  onAddCurriculum: (newCurriculum: Curriculum) => void;
-  onDeleteCurriculum: (id: string) => void;
-  onUpdateTutorProfile: (tutorId: string, updatedTutor: Partial<Tutor>) => void;
   onLogout: () => void;
   onNavigateHome?: () => void;
   initialSubTab?: AdminSubTab;
@@ -33,11 +36,6 @@ interface AdminCMSProps {
 }
 
 export default function AdminCMS({
-  curriculums,
-  tutors,
-  onAddCurriculum,
-  onDeleteCurriculum,
-  onUpdateTutorProfile,
   onLogout,
   onNavigateHome,
   initialSubTab,
@@ -112,11 +110,9 @@ export default function AdminCMS({
   const [curriculumSaved, setCurriculumSaved] = useState(false);
 
   // Profile manager state
-  const [selectedTutorId, setSelectedTutorId] = useState(tutors[0]?.id || "");
-  const [profileBio, setProfileBio] = useState(tutors[0]?.bio || "");
-  const [profileExp, setProfileExp] = useState(tutors[0]?.experience || "");
-  const [profileSeoTitle, setProfileSeoTitle] = useState(tutors[0]?.seoTitle || "");
-  const [profileSeoDescription, setProfileSeoDescription] = useState(tutors[0]?.seoDescription || "");
+  const [selectedTutorId, setSelectedTutorId] = useState("");
+  const [profileBio, setProfileBio] = useState("");
+  const [profileExp, setProfileExp] = useState("");
   const [profileSaved, setProfileSaved] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
 
@@ -124,7 +120,7 @@ export default function AdminCMS({
   type OverviewData = {
     monthlyBookings: { month: string; yearMonth: string; count: number }[];
     programDistribution: { program: string; count: number }[];
-    counts: { tutors: number; students: number; totalMembers: number; activeCurriculums: number };
+    counts: { tutors: number; students: number; guardians: number; totalMembers: number; activeCurriculums: number };
   };
   type ApiTutorItem = {
     accountId: string; bio: string | null; experienceYears: number; specialties: string[];
@@ -138,12 +134,15 @@ export default function AdminCMS({
   const [apiTutors, setApiTutors] = useState<ApiTutorItem[] | null>(null);
   const [apiCurriculums, setApiCurriculums] = useState<DbCurriculumItem[] | null>(null);
   const [curriculumLoading, setCurriculumLoading] = useState(false);
+  const [curriculumError, setCurriculumError] = useState("");
+  const [profileError, setProfileError] = useState("");
 
   // --- INTEGRATED QURAN CRUD STATE ---
-  const [surahs, setSurahs] = useState<Surah[]>(() => {
-    const saved = localStorage.getItem("qta_surahs");
-    return saved ? JSON.parse(saved) : INITIAL_SURAHS;
-  });
+  // The Quran text ships with the app; the database stores admin overrides on top of it.
+  const [surahs, setSurahs] = useState<Surah[]>(INITIAL_SURAHS);
+  const [surahOverrides, setSurahOverrides] = useState<Record<number, SurahOverride>>({});
+  const [versesDirty, setVersesDirty] = useState(false);
+  const [contentError, setContentError] = useState("");
   const [quranSearch, setQuranSearch] = useState("");
   const [editingSurahId, setEditingSurahId] = useState<string | null>(null);
   
@@ -169,6 +168,7 @@ export default function AdminCMS({
       [field]: value
     };
     setCurrentSurahVerses(updated);
+    setVersesDirty(true);
   };
 
   const handleDeleteVerseFromEditor = (index: number) => {
@@ -178,6 +178,7 @@ export default function AdminCMS({
     }));
     setCurrentSurahVerses(updated);
     setSurahVerses(updated.length);
+    setVersesDirty(true);
   };
 
   const handleAddNewVerseToEditor = () => {
@@ -193,29 +194,14 @@ export default function AdminCMS({
       }
     ]);
     setSurahVerses(nextNum);
-  };
-
-  const handleAutoGenerateVerses = () => {
-    const generated = Array.from({ length: surahVerses }, (_, index) => {
-      const vNum = index + 1;
-      return {
-        verse_number: vNum,
-        text_ar: `وَالْقُرْآنِ الْكَرِيمِ تَبَارَكَ الَّذِي بِيَدِهِ الْمُلْكُ وَهُوَ عَلَىٰ كُلِّ شَيْءٍ قَدِيرٌ (الآية ${vNum})`,
-        text_translation: `And indeed, the Holy Quran is a guidance and mercy. Sovereign is He in whose hand is dominion, and He is over all things competent. (Verse ${vNum} translation representation)`,
-        juz_id: Math.ceil(vNum / 15) || 1
-      };
-    });
-    setCurrentSurahVerses(generated);
+    setVersesDirty(true);
   };
 
   // Toggle between managing Surahs and managing Juz (Para) within the same Quran admin tab
   const [quranCrudMode, setQuranCrudMode] = useState<"surah" | "juz">("surah");
 
   // --- INTEGRATED JUZ (PARA) CRUD STATE ---
-  const [juzList, setJuzList] = useState<Juz[]>(() => {
-    const saved = localStorage.getItem("qta_juz");
-    return saved ? JSON.parse(saved) : INITIAL_JUZ;
-  });
+  const [juzList, setJuzList] = useState<Juz[]>(INITIAL_JUZ);
   const [juzSearch, setJuzSearch] = useState("");
   const [editingJuzNumber, setEditingJuzNumber] = useState<number | null>(null);
 
@@ -226,12 +212,7 @@ export default function AdminCMS({
   const [juzStartInfo, setJuzStartInfo] = useState("");
   const [juzSaved, setJuzSaved] = useState(false);
 
-  const saveJuzState = (data: Juz[]) => {
-    setJuzList(data);
-    localStorage.setItem("qta_juz", JSON.stringify(data));
-  };
-
-  const handleAddOrUpdateJuz = (e: React.FormEvent) => {
+  const handleAddOrUpdateJuz = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!juzNameArabic.trim() || !juzNameEnglish.trim()) return;
 
@@ -242,20 +223,23 @@ export default function AdminCMS({
       startInfo: juzStartInfo
     };
 
-    if (editingJuzNumber !== null) {
-      const updated = juzList.map(j => j.number === editingJuzNumber ? record : j);
-      saveJuzState(updated.sort((a, b) => a.number - b.number));
-      setEditingJuzNumber(null);
-    } else {
-      const withoutDuplicate = juzList.filter(j => j.number !== juzNumber);
-      saveJuzState([...withoutDuplicate, record].sort((a, b) => a.number - b.number));
+    setContentError("");
+    try {
+      await accountRequest(`/admin/content/quran/juz/${record.number}`, token, "PUT", {
+        nameArabic: record.nameArabic.trim(), nameEnglish: record.nameEnglish.trim(), startInfo: record.startInfo.trim(),
+      });
+    } catch (error) {
+      setContentError(error instanceof Error ? error.message : "Could not save the Juz.");
+      return;
     }
+    setJuzList(prev => prev.map(j => j.number === record.number ? record : j));
+    setEditingJuzNumber(null);
 
     // Reset Form
     setJuzNameArabic("");
     setJuzNameEnglish("");
     setJuzStartInfo("");
-    setJuzNumber(juzList.length + 1);
+    setJuzNumber(Math.min(30, record.number + 1));
     setJuzSaved(true);
     setTimeout(() => setJuzSaved(false), 2000);
   };
@@ -268,18 +252,23 @@ export default function AdminCMS({
     setJuzStartInfo(j.startInfo);
   };
 
-  const handleDeleteJuz = (number: number) => {
-    if (window.confirm("Are you sure you want to delete this Juz from the index?")) {
-      const updated = juzList.filter(j => j.number !== number);
-      saveJuzState(updated);
+  const handleDeleteJuz = async (number: number) => {
+    if (!window.confirm("Reset this Juz to its standard name and start point?")) return;
+    setContentError("");
+    try {
+      await accountRequest(`/admin/content/quran/juz/${number}`, token, "DELETE");
+      setJuzList(prev => prev.map(j => j.number === number ? INITIAL_JUZ[number - 1] : j));
+    } catch (error) {
+      setContentError(error instanceof Error ? error.message : "Could not reset the Juz.");
     }
   };
 
   // --- INTEGRATED BLOG CRUD STATE ---
-  const [blogs, setBlogs] = useState<BlogPost[]>(() => {
-    const saved = localStorage.getItem("qta_blogs");
-    return saved ? JSON.parse(saved) : INITIAL_BLOGS;
-  });
+  const [blogs, setBlogs] = useState<BlogPost[]>([]);
+  const [blogsLoaded, setBlogsLoaded] = useState(false);
+  const [quranLoaded, setQuranLoaded] = useState(false);
+  const [blogError, setBlogError] = useState("");
+  const [blogSaving, setBlogSaving] = useState(false);
   const [editingBlogId, setEditingBlogId] = useState<string | null>(null);
   const [isCreatingBlog, setIsCreatingBlog] = useState(false);
 
@@ -514,7 +503,7 @@ export default function AdminCMS({
     } else if (templateName === "hifz_guide") {
       content = `## Actionable Spaced-Repetition Hifz Strategy\n\nMemorizing the Quran is a life-changing spiritual journey. Using cognitive science techniques like **Spaced-Repetition**, anyone can solidify their retention without fatigue.\n\n### The 3x5 Revision Blueprint\n- **Revision Phase**: Recite yesterday's portion 5 times from memory before starting any new verse.\n- **New Lesson Phase**: Read the new verse 3 times looking closely at the tajweed marks, then repeat 5 times from pure memory.\n- **Long-term Retention**: Schedule audits every Friday for all chapters memorized in the last 30 days.\n\n### Live Support\nJoin our daily live correction circles with certified scholars to audit your pronunciation.`;
     } else if (templateName === "academy_announcement") {
-      content = `## Announcement: Interactive Web Whiteboards Launch!\n\nWe are thrilled to launch our next-generation **Virtual Vector Whiteboard** to all enrolled students!\n\n### What's New?\n- **Real-time Calligraphy Drawing**: Certified tutors can write custom letters and circle mistakes instantly during active sessions.\n- **Instant Tajweed Color Highlight**: Color-coded annotations for Ikhfa, Idghaam, and Qalqalah rules.\n- **Session Replays**: Rewind any lesson to practice proper articulation.\n\nReach out to support or your personal counselor to schedule an onboarding orientation!`;
+      content = `## Announcement: Title Goes Here\n\nWrite a short introduction for families and students.\n\n### What's New?\n- First update\n- Second update\n- Third update\n\nContact the academy if you have any questions.`;
     }
     setBlogContent(content);
     const html = markdownToHtml(content);
@@ -525,84 +514,56 @@ export default function AdminCMS({
     }
   };
 
-  const saveSurahsState = (data: Surah[]) => {
-    setSurahs(data);
-    localStorage.setItem("qta_surahs", JSON.stringify(data));
+  const applySurahOverride = (base: Surah, row?: SurahOverride): Surah => !row ? base : {
+    ...base,
+    nameArabic: row.nameArabic || base.nameArabic,
+    nameEnglish: row.nameEnglish || base.nameEnglish,
+    type: (row.revelationType as Surah["type"]) || base.type,
+    totalVerses: row.ayahs?.length || base.totalVerses,
+    audioUrl: row.audioUrl || base.audioUrl,
+    seoTitle: row.seoTitle || undefined,
+    seoDescription: row.seoDescription || undefined,
   };
 
-  const saveBlogsState = (data: BlogPost[]) => {
-    setBlogs(data);
-    localStorage.setItem("qta_blogs", JSON.stringify(data));
-  };
-
-  const handleAddOrUpdateSurah = (e: React.FormEvent) => {
+  const handleAddOrUpdateSurah = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!surahArabic.trim() || !surahEnglish.trim()) return;
+    if (surahNumber < 1 || surahNumber > 114) { setContentError("Surah number must be between 1 and 114."); return; }
+    if (versesDirty && currentSurahVerses.some(v => !v.text_ar.trim())) {
+      setContentError("Every verse needs Arabic text before saving."); return;
+    }
 
-    const resolvedVerses = currentSurahVerses.length > 0 
-      ? currentSurahVerses 
-      : Array.from({ length: surahVerses }, (_, index) => {
-          const vNum = index + 1;
-          return {
-            verse_number: vNum,
-            text_ar: `وَالْقُرْآنِ الْكَرِيمِ تَبَارَكَ الَّذِي بِيَدِهِ الْمُلْكُ وَهُوَ عَلَىٰ كُلِّ شَيْءٍ قَدِيرٌ (الآية ${vNum})`,
-            text_translation: `And indeed, the Holy Quran is a guidance and mercy. Sovereign is He in whose hand is dominion, and He is over all things competent. (Verse ${vNum} translation representation)`,
-            juz_id: Math.ceil(vNum / 15) || 1
-          };
-        });
-
-    if (editingSurahId) {
-      // Update
-      const updated = surahs.map(s => {
-        if (s.id === editingSurahId) {
-          return {
-            ...s,
-            number: surahNumber,
-            nameArabic: surahArabic,
-            nameEnglish: surahEnglish,
-            type: surahType,
-            totalVerses: resolvedVerses.length,
-            audioUrl: surahAudio,
-            verses: resolvedVerses,
-            seoTitle: surahSeoTitle.trim() || undefined,
-            seoDescription: surahSeoDescription.trim() || undefined
-          };
-        }
-        return s;
+    setContentError("");
+    try {
+      const saved = await accountRequest<SurahOverride>(`/admin/content/quran/surahs/${surahNumber}`, token, "PUT", {
+        nameArabic: surahArabic.trim(), nameEnglish: surahEnglish.trim(), revelationType: surahType,
+        audioUrl: surahAudio.trim(), seoTitle: surahSeoTitle.trim(), seoDescription: surahSeoDescription.trim(),
+        ...(versesDirty ? { ayahs: currentSurahVerses.map(v => ({
+          numberInSurah: v.verse_number, arabic: v.text_ar.trim(), translation: v.text_translation.trim(),
+        })) } : {}),
       });
-      saveSurahsState(updated);
-      setEditingSurahId(null);
-    } else {
-      // Add
-      const newSurah: Surah = {
-        id: "s-" + Date.now(),
-        number: surahNumber,
-        nameArabic: surahArabic,
-        nameEnglish: surahEnglish,
-        type: surahType,
-        totalVerses: resolvedVerses.length,
-        audioUrl: surahAudio || `https://audio.qurancdn.com/reciters/7/${surahNumber}.mp3`,
-        verses: resolvedVerses,
-        seoTitle: surahSeoTitle.trim() || undefined,
-        seoDescription: surahSeoDescription.trim() || undefined
-      };
-      saveSurahsState([...surahs, newSurah].sort((a,b) => a.number - b.number));
+      setSurahOverrides(prev => ({ ...prev, [saved.number]: saved }));
+      setSurahs(prev => prev.map(s => s.number === saved.number ? applySurahOverride(INITIAL_SURAHS[saved.number - 1], saved) : s));
+    } catch (error) {
+      setContentError(error instanceof Error ? error.message : "Could not save the surah.");
+      return;
     }
 
     // Reset Form
+    setEditingSurahId(null);
     setSurahArabic("");
     setSurahEnglish("");
-    setSurahNumber(surahs.length + 2);
     setSurahAudio("");
     setSurahSeoTitle("");
     setSurahSeoDescription("");
     setCurrentSurahVerses([]);
+    setVersesDirty(false);
     setEditorVerseSearch("");
     setQuranSaved(true);
     setTimeout(() => setQuranSaved(false), 2000);
   };
 
-  const handleEditSurahTrigger = (surah: Surah) => {
+  const handleEditSurahTrigger = async (surah: Surah) => {
     setEditingSurahId(surah.id);
     setSurahNumber(surah.number);
     setSurahArabic(surah.nameArabic);
@@ -612,37 +573,51 @@ export default function AdminCMS({
     setSurahAudio(surah.audioUrl || "");
     setSurahSeoTitle(surah.seoTitle || "");
     setSurahSeoDescription(surah.seoDescription || "");
+    setVersesDirty(false);
+    setContentError("");
+    setCurrentSurahVerses([]);
 
-    // Load verses
-    if (surah.verses && surah.verses.length > 0) {
-      setCurrentSurahVerses(surah.verses);
+    let ayahs = surahOverrides[surah.number]?.ayahs ?? null;
+    if (!ayahs?.length) {
+      const slug = (quranIndex as Array<{ slug: string; number: number }>).find(s => s.number === surah.number)?.slug;
+      const load = slug ? staticVersePages[`../data/quran-verses/${slug}.json`] : undefined;
+      try { ayahs = load ? (await load()).default.ayahs : null; } catch { ayahs = null; }
+    }
+    if (ayahs?.length) {
+      setCurrentSurahVerses(ayahs.map(a => ({
+        verse_number: a.numberInSurah, text_ar: a.arabic, text_translation: a.translation, juz_id: 1,
+      })));
     } else {
-      const loaded = REALISTIC_QURAN_VERSES[surah.number];
-      if (loaded) {
-        setCurrentSurahVerses(loaded);
-      } else {
-        const generated = Array.from({ length: surah.totalVerses }, (_, index) => {
-          const vNum = index + 1;
-          return {
-            verse_number: vNum,
-            text_ar: `وَالْقُرْآنِ الْكَرِيمِ تَبَارَكَ الَّذِي بِيَدِهِ الْمُلْكُ وَهُوَ عَلَىٰ كُلِّ شَيْءٍ قَدِيرٌ (الآية ${vNum})`,
-            text_translation: `And indeed, the Holy Quran is a guidance and mercy. Sovereign is He in whose hand is dominion, and He is over all things competent. (Verse ${vNum} translation representation)`,
-            juz_id: Math.ceil(vNum / 15) || 1
-          };
-        });
-        setCurrentSurahVerses(generated);
-      }
+      setContentError("The shipped verse text for this surah could not be loaded.");
     }
   };
 
-  const handleDeleteSurah = (id: string) => {
-    if (window.confirm("Are you sure you want to delete this Surah from the index?")) {
-      const updated = surahs.filter(s => s.id !== id);
-      saveSurahsState(updated);
+  const handleDeleteSurah = async (id: string) => {
+    const number = Number(id.replace("s-", ""));
+    if (!window.confirm("Reset this surah to the shipped Quran text and default details?")) return;
+    setContentError("");
+    try {
+      await accountRequest(`/admin/content/quran/surahs/${number}`, token, "DELETE");
+      setSurahOverrides(prev => { const next = { ...prev }; delete next[number]; return next; });
+      setSurahs(prev => prev.map(s => s.number === number ? INITIAL_SURAHS[number - 1] : s));
+    } catch (error) {
+      setContentError(error instanceof Error ? error.message : "Could not reset the surah.");
     }
   };
 
-  const handleAddOrUpdateBlog = (e: React.FormEvent) => {
+  type ApiBlogRow = {
+    id: string; title: string; slug: string; excerpt: string; content: string; author: string; coverImage: string;
+    status: "Draft" | "Published"; publishedAt: string; tags: string[];
+    seoTitle: string | null; seoDescription: string | null; seoImage: string | null;
+  };
+  const blogFromApi = (row: ApiBlogRow): BlogPost => ({
+    id: row.id, title: row.title, slug: row.slug, excerpt: row.excerpt, content: row.content,
+    author: row.author, coverImage: row.coverImage, status: row.status, publishedAt: row.publishedAt.slice(0, 10),
+    tags: row.tags, seoTitle: row.seoTitle ?? undefined, seoDescription: row.seoDescription ?? undefined,
+    seoImage: row.seoImage ?? undefined,
+  });
+
+  const handleAddOrUpdateBlog = async (e: React.FormEvent) => {
     e.preventDefault();
     let finalContent = blogContent;
 
@@ -655,49 +630,36 @@ export default function AdminCMS({
 
     if (!blogTitle.trim() || !finalContent.trim()) return;
 
-    const slug = blogSlug.trim() || slugify(blogTitle);
+    const body = {
+      title: blogTitle.trim(),
+      slug: blogSlug.trim() || undefined,
+      excerpt: blogExcerpt.trim() || undefined,
+      content: finalContent,
+      author: blogAuthor.trim() || undefined,
+      coverImage: blogCover.trim() || undefined,
+      status: blogStatus,
+      tags: blogTags.split(",").map(t => t.trim()).filter(Boolean),
+      seoTitle: blogSeoTitle.trim() || undefined,
+      seoDescription: blogSeoDescription.trim() || undefined,
+      seoImage: blogSeoImage.trim() || undefined,
+    };
 
-    if (editingBlogId) {
-      // Update
-      const updated = blogs.map(b => {
-        if (b.id === editingBlogId) {
-          return {
-            ...b,
-            title: blogTitle,
-            slug,
-            excerpt: blogExcerpt || blogTitle,
-            content: finalContent,
-            author: blogAuthor || "Administrator",
-            coverImage: blogCover || "https://images.unsplash.com/photo-1542831371-29b0f74f9713?auto=format&fit=crop&q=80&w=400",
-            status: blogStatus,
-            tags: blogTags.split(",").map(t => t.trim()).filter(Boolean),
-            seoTitle: blogSeoTitle.trim() || undefined,
-            seoDescription: blogSeoDescription.trim() || undefined,
-            seoImage: blogSeoImage.trim() || undefined
-          };
-        }
-        return b;
-      });
-      saveBlogsState(updated);
-      setEditingBlogId(null);
-    } else {
-      // Add
-      const newBlog: BlogPost = {
-        id: "blog-" + Date.now(),
-        title: blogTitle,
-        slug,
-        excerpt: blogExcerpt || blogTitle,
-        content: finalContent,
-        author: blogAuthor || "Administrator",
-        coverImage: blogCover || "https://images.unsplash.com/photo-1542831371-29b0f74f9713?auto=format&fit=crop&q=80&w=400",
-        status: blogStatus,
-        publishedAt: new Date().toISOString().split("T")[0],
-        tags: blogTags.split(",").map(t => t.trim()).filter(Boolean),
-        seoTitle: blogSeoTitle.trim() || undefined,
-        seoDescription: blogSeoDescription.trim() || undefined,
-        seoImage: blogSeoImage.trim() || undefined
-      };
-      saveBlogsState([newBlog, ...blogs]);
+    setBlogError("");
+    setBlogSaving(true);
+    try {
+      if (editingBlogId) {
+        const row = await accountRequest<ApiBlogRow>(`/admin/content/blog/${editingBlogId}`, token, "PATCH", body);
+        setBlogs(prev => prev.map(b => b.id === editingBlogId ? blogFromApi(row) : b));
+        setEditingBlogId(null);
+      } else {
+        const row = await accountRequest<ApiBlogRow>("/admin/content/blog", token, "POST", body);
+        setBlogs(prev => [blogFromApi(row), ...prev]);
+      }
+    } catch (error) {
+      setBlogError(error instanceof Error ? error.message : "Could not save the article.");
+      return;
+    } finally {
+      setBlogSaving(false);
     }
 
     // Reset Form
@@ -734,10 +696,14 @@ export default function AdminCMS({
     setBlogSeoImage(blog.seoImage || "");
   };
 
-  const handleDeleteBlog = (id: string) => {
-    if (window.confirm("Are you sure you want to delete this blog post?")) {
-      const updated = blogs.filter(b => b.id !== id);
-      saveBlogsState(updated);
+  const handleDeleteBlog = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this blog post?")) return;
+    setBlogError("");
+    try {
+      await accountRequest(`/admin/content/blog/${id}`, token, "DELETE");
+      setBlogs(prev => prev.filter(b => b.id !== id));
+    } catch (error) {
+      setBlogError(error instanceof Error ? error.message : "Could not delete the article.");
     }
   };
 
@@ -750,6 +716,7 @@ export default function AdminCMS({
   const handleAddCurriculumSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
+    setCurriculumError("");
     try {
       const created = await accountRequest<DbCurriculumItem>("/admin/curriculum", token, "POST", {
         title: newTitle.trim(),
@@ -761,8 +728,8 @@ export default function AdminCMS({
       setNewDesc("");
       setCurriculumSaved(true);
       setTimeout(() => setCurriculumSaved(false), 2000);
-    } catch {
-      // keep form open on error
+    } catch (error) {
+      setCurriculumError(error instanceof Error ? error.message : "Could not save the curriculum.");
     }
   };
 
@@ -770,36 +737,35 @@ export default function AdminCMS({
     e.preventDefault();
     if (!selectedTutorId) return;
     setProfileSaving(true);
+    setProfileError("");
     try {
       await accountRequest("/admin/tutors/" + selectedTutorId + "/bio", token, "PATCH", {
         bio: profileBio,
         experienceYears: parseInt(profileExp) || undefined,
       });
-      // Keep local mock state in sync for props-based render fallback
-      onUpdateTutorProfile(selectedTutorId, { bio: profileBio, experience: profileExp });
+      setApiTutors(prev => prev?.map(t => t.accountId === selectedTutorId
+        ? { ...t, bio: profileBio, experienceYears: parseInt(profileExp) || t.experienceYears } : t) ?? prev);
       setProfileSaved(true);
       setTimeout(() => setProfileSaved(false), 2500);
-    } catch {
-      // show error
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "Could not save the profile.");
     } finally {
       setProfileSaving(false);
     }
   };
 
-  const activeTutorObj = apiTutors?.find(t => t.accountId === selectedTutorId)
-    ?? tutors.find(t => t.id === selectedTutorId);
-
   // Load overview + tutors + operations when overview tab is opened
   useEffect(() => {
     if (activeSubTab === "overview" && !overviewData && !overviewLoading && token) {
       setOverviewLoading(true);
-      Promise.all([
+      Promise.allSettled([
         accountRequest<OverviewData>("/admin/overview", token),
         accountRequest<ApiTutorItem[]>("/admin/tutors", token),
         accountRequest<{ audit: { id: string; action: string; targetType: string; targetId: string; createdAt: string; actor: { fullName: string } | null }[] }>("/admin/operations", token),
-      ]).then(([ov, tuts, ops]) => {
-        setOverviewData(ov);
-        setApiTutors(tuts);
+      ]).then(([ovR, tutsR, opsR]) => {
+        if (ovR.status === "fulfilled") setOverviewData(ovR.value);
+        if (tutsR.status === "fulfilled") setApiTutors(tutsR.value);
+        const ops = opsR.status === "fulfilled" ? opsR.value : null;
         if (ops?.audit?.length) {
           setLiveLogs(ops.audit.slice(0, 20).map((e) => ({
             id: e.id,
@@ -821,6 +787,30 @@ export default function AdminCMS({
         .then(setApiCurriculums)
         .catch(() => {})
         .finally(() => setCurriculumLoading(false));
+    }
+  }, [activeSubTab, token]);
+
+  // Load blog posts / Quran overrides from the database when their tabs are opened
+  useEffect(() => {
+    if (!token) return;
+    if (activeSubTab === "blog_crud" && !blogsLoaded) {
+      setBlogsLoaded(true);
+      accountRequest<ApiBlogRow[]>("/admin/content/blog", token)
+        .then(rows => setBlogs(rows.map(blogFromApi)))
+        .catch(error => { setBlogsLoaded(false); setBlogError(error instanceof Error ? error.message : "Could not load articles."); });
+    }
+    if (activeSubTab === "quran_crud" && !quranLoaded) {
+      setQuranLoaded(true);
+      Promise.all([
+        accountRequest<SurahOverride[]>("/admin/content/quran/surahs", token),
+        accountRequest<Juz[]>("/quran/juz", token),
+      ]).then(([overrides, juzRows]) => {
+        const byNumber: Record<number, SurahOverride> = {};
+        for (const row of overrides) byNumber[row.number] = row;
+        setSurahOverrides(byNumber);
+        setSurahs(INITIAL_SURAHS.map(base => applySurahOverride(base, byNumber[base.number])));
+        setJuzList(INITIAL_JUZ.map(base => juzRows.find(row => row.number === base.number) ?? base));
+      }).catch(error => { setQuranLoaded(false); setContentError(error instanceof Error ? error.message : "Could not load Quran records."); });
     }
   }, [activeSubTab, token]);
 
@@ -868,6 +858,8 @@ export default function AdminCMS({
         ? "Payment Reconciliation"
         : activeSubTab === "courses"
         ? "Course Approval Queue"
+        : activeSubTab === "enrollments"
+        ? "Course Enrollments"
         : "Lesson Recovery & Audit Log"
     }
   ];
@@ -995,6 +987,17 @@ export default function AdminCMS({
               >
                 <GraduationCap size={13} />
                 <span>Course Approval</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab("enrollments")}
+                className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl transition duration-300 flex items-center space-x-2.5 ${
+                  activeSubTab === "enrollments"
+                    ? "bg-sky-500 text-neutral-950 shadow-lg shadow-sky-500/10 font-extrabold"
+                    : "bg-neutral-950/80 text-neutral-400 hover:text-white border border-neutral-850 hover:bg-neutral-900"
+                }`}
+              >
+                <UserCheck size={13} />
+                <span>Course Enrollments</span>
               </button>
               <button
                 onClick={() => setActiveSubTab("lesson_recovery")}
@@ -1218,7 +1221,7 @@ export default function AdminCMS({
               <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 space-y-3 relative overflow-hidden group hover:border-neutral-750 transition duration-300 shadow-md">
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
-                    <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">Student Families</span>
+                    <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">Active Students</span>
                     <h3 className="text-2xl font-extrabold text-white">{overviewData?.counts.students ?? (overviewLoading ? "…" : "—")}</h3>
                   </div>
                   <div className="p-2 bg-indigo-950/60 border border-indigo-500/20 text-indigo-400 rounded-xl">
@@ -1226,8 +1229,8 @@ export default function AdminCMS({
                   </div>
                 </div>
                 <div className="flex items-center space-x-2 text-xs">
-                  <span className="text-indigo-400 font-bold">Guardians enrolled</span>
-                  <span className="text-neutral-500">Active</span>
+                  <span className="text-indigo-400 font-bold">{overviewData?.counts.guardians ?? "—"} guardians</span>
+                  <span className="text-neutral-500">Live DB count</span>
                 </div>
                 <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 to-transparent opacity-30" />
               </div>
@@ -1324,7 +1327,6 @@ export default function AdminCMS({
                         <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-neutral-900 border border-amber-500/40 p-3 rounded-xl shadow-2xl text-xs space-y-1 z-20 w-48 text-center">
                           <span className="font-extrabold text-amber-500 uppercase text-[9px] tracking-wider block">{hovered.month} Metrics</span>
                           <p className="text-white font-bold text-sm">{hovered.count} Bookings</p>
-                          <p className="text-emerald-400 font-mono text-[11px] font-semibold">Est. ${(hovered.count * 40).toLocaleString()}</p>
                         </div>
                       )}
                     </div>
@@ -1500,8 +1502,12 @@ export default function AdminCMS({
                         <span className="text-white font-mono">{overviewData?.counts.tutors ?? "—"}</span>
                       </div>
                       <div className="flex justify-between border-b border-neutral-800 pb-1.5">
-                        <span className="text-neutral-400 font-semibold">Student Families</span>
+                        <span className="text-neutral-400 font-semibold">Active Students</span>
                         <span className="text-white font-mono">{overviewData?.counts.students ?? "—"}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-neutral-800 pb-1.5">
+                        <span className="text-neutral-400 font-semibold">Guardians</span>
+                        <span className="text-white font-mono">{overviewData?.counts.guardians ?? "—"}</span>
                       </div>
                       <div className="flex justify-between border-b border-neutral-800 pb-1.5">
                         <span className="text-neutral-400 font-semibold">Total Members</span>
@@ -1872,28 +1878,6 @@ export default function AdminCMS({
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="font-bold text-neutral-300">Total Milestones Count</label>
-                  <input
-                    type="number"
-                    value={newLessonsCount}
-                    onChange={(e) => setNewLessonsCount(Number(e.target.value))}
-                    className="w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-bold text-neutral-300">Description</label>
-                  <textarea
-                    rows={3}
-                    value={newDesc}
-                    onChange={(e) => setNewDesc(e.target.value)}
-                    required
-                    placeholder="Short course description and educational objective..."
-                    className="w-full bg-neutral-950 border border-neutral-700 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 placeholder-neutral-500 resize-none"
-                  />
-                </div>
-
                 <button
                   type="submit"
                   className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-neutral-950 hover:text-white font-bold rounded-xl transition duration-300"
@@ -1904,6 +1888,7 @@ export default function AdminCMS({
                 {curriculumSaved && (
                   <p className="text-emerald-400 text-xs font-semibold text-center animate-pulse">✓ Saved successfully!</p>
                 )}
+                {curriculumError && <p role="alert" className="text-rose-400 text-xs font-semibold text-center">{curriculumError}</p>}
 
               </form>
             </div>
@@ -2008,9 +1993,11 @@ export default function AdminCMS({
               })()}
 
               <div className="space-y-1.5">
-                <label className="font-bold text-neutral-300">Scholarly Experience Duration</label>
+                <label className="font-bold text-neutral-300">Years of Teaching Experience</label>
                 <input
-                  type="text"
+                  type="number"
+                  min={0}
+                  max={80}
                   value={profileExp}
                   onChange={(e) => setProfileExp(e.target.value)}
                   className="w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
@@ -2027,37 +2014,6 @@ export default function AdminCMS({
                 />
               </div>
 
-              <div className="space-y-3 pt-2 border-t border-neutral-850">
-                <label className="font-bold text-neutral-300 flex items-center gap-1.5">
-                  <Globe size={12} className="text-amber-500" />
-                  SEO &amp; Search Metadata
-                </label>
-
-                <div className="space-y-1.5">
-                  <label className="text-[11px] text-neutral-400">SEO Title (overrides default page title)</label>
-                  <input
-                    type="text"
-                    value={profileSeoTitle}
-                    onChange={(e) => setProfileSeoTitle(e.target.value)}
-                    placeholder={activeTutorObj ? `${activeTutorObj.name} — ${activeTutorObj.specialties[0] || "Quran"} Tutor` : "E.g., Sheikh Ahmed — Tajweed Tutor"}
-                    maxLength={70}
-                    className="w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500 placeholder-neutral-600"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[11px] text-neutral-400">Meta Description (shown in search results)</label>
-                  <textarea
-                    value={profileSeoDescription}
-                    onChange={(e) => setProfileSeoDescription(e.target.value)}
-                    rows={2}
-                    placeholder="A concise summary of this tutor's profile for search engine results..."
-                    maxLength={160}
-                    className="w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500 placeholder-neutral-600 resize-none"
-                  />
-                </div>
-              </div>
-
               <button
                 type="submit"
                 disabled={profileSaving || !selectedTutorId}
@@ -2071,6 +2027,7 @@ export default function AdminCMS({
                   ✓ Profile updated successfully in the database!
                 </div>
               )}
+              {profileError && <p role="alert" className="text-center text-xs font-semibold text-rose-400">{profileError}</p>}
 
             </form>
           </div>
@@ -2422,7 +2379,7 @@ export default function AdminCMS({
                   </div>
                   
                   <p className="text-[10px] text-neutral-400">
-                    Add, update, or delete verses. Changes will be saved to local index.
+                    The editor starts from the shipped Quran text. Verse changes are only saved, and shown on the public Quran page, if you edit a verse.
                   </p>
 
                   <div className="flex gap-2">
@@ -2433,15 +2390,6 @@ export default function AdminCMS({
                     >
                       <Plus size={12} className="text-amber-500" />
                       Add Verse
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleAutoGenerateVerses}
-                      className="flex-1 py-1.5 bg-amber-600/10 hover:bg-amber-600/20 text-amber-500 border border-amber-600/30 rounded-lg flex items-center justify-center gap-1 font-semibold text-[11px] transition"
-                      title="Populates all verses with high-fidelity template Arabic text and translations"
-                    >
-                      <Sparkles size={12} className="text-amber-500 animate-pulse" />
-                      Auto-Gen
                     </button>
                   </div>
 
@@ -2465,7 +2413,7 @@ export default function AdminCMS({
                       <div className="text-center py-6 text-neutral-500 bg-neutral-950 rounded-xl border border-neutral-850">
                         <BookOpen size={20} className="mx-auto mb-1 opacity-40 text-neutral-400" />
                         <p className="text-[11px]">No verses defined yet.</p>
-                        <p className="text-[10px] text-neutral-600 mt-0.5">Click Add Verse or Auto-Gen.</p>
+                        <p className="text-[10px] text-neutral-600 mt-0.5">Choose a surah from the list and press Edit to load its verses.</p>
                       </div>
                     ) : (
                       currentSurahVerses
@@ -2533,8 +2481,9 @@ export default function AdminCMS({
                         setEditingSurahId(null);
                         setSurahArabic("");
                         setSurahEnglish("");
-                        setSurahNumber(surahs.length + 1);
                         setSurahAudio("");
+                        setCurrentSurahVerses([]);
+                        setVersesDirty(false);
                       }}
                       className="flex-1 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white font-bold rounded-xl transition"
                     >
@@ -2545,13 +2494,14 @@ export default function AdminCMS({
                     type="submit"
                     className="flex-2 py-2.5 bg-amber-600 hover:bg-amber-500 text-neutral-950 hover:text-white font-bold rounded-xl transition duration-300"
                   >
-                    {editingSurahId ? "Save Modifications" : "Index Surah Entry"}
+                    {editingSurahId ? "Save Modifications" : "Save Surah Override"}
                   </button>
                 </div>
 
                 {quranSaved && (
-                  <p className="text-emerald-400 text-center font-semibold animate-pulse">✓ Quran index synchronized!</p>
+                  <p className="text-emerald-400 text-center font-semibold animate-pulse">✓ Saved to the database — live on the Quran pages.</p>
                 )}
+                {contentError && <p role="alert" className="text-center font-semibold text-rose-400">{contentError}</p>}
 
               </form>
             </div>
@@ -2561,7 +2511,7 @@ export default function AdminCMS({
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <h3 className="text-base font-bold text-white flex items-center">
                   <BookOpen size={16} className="text-amber-500 mr-2" /> 
-                  Surah Database Records ({surahs.length} indexed surahs)
+                  Surah Records ({Object.keys(surahOverrides).length} customised of {surahs.length})
                 </h3>
 
                 <div className="relative w-full sm:w-64">
@@ -2594,16 +2544,18 @@ export default function AdminCMS({
                           <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${s.type === "Meccan" ? "bg-amber-950 text-amber-400 border border-amber-500/10" : "bg-indigo-950 text-indigo-400 border border-indigo-500/10"}`}>
                             {s.type}
                           </span>
+                          {surahOverrides[s.number] && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase bg-emerald-950 text-emerald-400 border border-emerald-500/20">Customised</span>
+                          )}
                         </div>
                         <h4 className="text-sm font-bold text-white pt-1">{s.nameEnglish}</h4>
-                        <p className="text-[11px] text-neutral-400">{s.totalVerses} Verse Blocks indexed</p>
-                        
-                        {/* Fake audio player bar preview */}
+                        <p className="text-[11px] text-neutral-400">{s.totalVerses} verses</p>
+
                         <div className="flex items-center space-x-2 pt-1.5">
-                          <button 
+                          <button
                             onClick={() => {
                               const audio = new Audio(s.audioUrl || `https://audio.qurancdn.com/reciters/7/${s.number}.mp3`);
-                              audio.play().catch(e => alert("Simulated Quran sound clip: WebRTC secure audio connection initialized. Playback stream active."));
+                              audio.play().catch(() => alert("This audio link could not be played. Check the URL."));
                             }}
                             className="bg-neutral-950 hover:bg-neutral-800 text-emerald-400 text-[10px] px-2 py-1 rounded border border-neutral-850 font-bold transition flex items-center space-x-1"
                           >
@@ -2627,7 +2579,7 @@ export default function AdminCMS({
                           <button
                             onClick={() => handleDeleteSurah(s.id)}
                             className="p-1.5 text-neutral-500 hover:text-rose-400 hover:bg-rose-950/20 rounded transition"
-                            title="Delete Record"
+                            title="Reset to shipped text and defaults"
                           >
                             <Trash2 size={12} />
                           </button>
@@ -2712,7 +2664,7 @@ export default function AdminCMS({
                         setJuzNameArabic("");
                         setJuzNameEnglish("");
                         setJuzStartInfo("");
-                        setJuzNumber(juzList.length + 1);
+                        setJuzNumber(1);
                       }}
                       className="flex-1 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white font-bold rounded-xl transition"
                     >
@@ -2723,13 +2675,14 @@ export default function AdminCMS({
                     type="submit"
                     className="flex-2 py-2.5 bg-amber-600 hover:bg-amber-500 text-neutral-950 hover:text-white font-bold rounded-xl transition duration-300"
                   >
-                    {editingJuzNumber !== null ? "Save Modifications" : "Index Juz Entry"}
+                    {editingJuzNumber !== null ? "Save Modifications" : "Save Juz"}
                   </button>
                 </div>
 
                 {juzSaved && (
-                  <p className="text-emerald-400 text-center font-semibold animate-pulse">✓ Juz index synchronized!</p>
+                  <p className="text-emerald-400 text-center font-semibold animate-pulse">✓ Saved to the database — live on the Quran page.</p>
                 )}
+                {contentError && <p role="alert" className="text-center font-semibold text-rose-400">{contentError}</p>}
 
               </form>
             </div>
@@ -2739,7 +2692,7 @@ export default function AdminCMS({
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <h3 className="text-base font-bold text-white flex items-center">
                   <Layers size={16} className="text-amber-500 mr-2" />
-                  Juz Database Records ({juzList.length} indexed paras)
+                  Juz Records ({juzList.length} paras)
                 </h3>
 
                 <div className="relative w-full sm:w-64">
@@ -2788,7 +2741,7 @@ export default function AdminCMS({
                           <button
                             onClick={() => handleDeleteJuz(j.number)}
                             className="p-1.5 text-neutral-500 hover:text-rose-400 hover:bg-rose-950/20 rounded transition"
-                            title="Delete Record"
+                            title="Reset to standard values"
                           >
                             <Trash2 size={12} />
                           </button>
@@ -3168,11 +3121,13 @@ export default function AdminCMS({
                       </div>
                     </div>
 
+                    {blogError && <p role="alert" className="rounded-xl border border-rose-500/25 bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-300">{blogError}</p>}
                     <button
                       type="submit"
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-neutral-950 hover:text-white font-bold rounded-xl transition duration-300 text-xs"
+                      disabled={blogSaving}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-neutral-950 hover:text-white font-bold rounded-xl transition duration-300 text-xs disabled:opacity-60"
                     >
-                      {editingBlogId ? "Apply Modifications" : "Publish Article to Site"}
+                      {blogSaving ? "Saving…" : editingBlogId ? "Apply Modifications" : "Save Article"}
                     </button>
 
                   </form>
@@ -3252,6 +3207,12 @@ export default function AdminCMS({
             ) : (
               /* GRID OF CURRENT BLOG POSTS WITH CRUD BUTTONS */
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {blogError && <p role="alert" className="md:col-span-2 lg:col-span-3 text-xs font-semibold text-rose-400">{blogError}</p>}
+                {blogsLoaded && blogs.length === 0 && !blogError && (
+                  <p className="md:col-span-2 lg:col-span-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-8 text-center text-xs text-neutral-400">
+                    No articles in the database yet. Create the first one — Published articles appear on the public Insights pages.
+                  </p>
+                )}
                 {blogs.map((b) => (
                   <div key={b.id} className="bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-xl flex flex-col justify-between hover:border-emerald-500/25 transition">
                     <div>
@@ -3357,6 +3318,12 @@ export default function AdminCMS({
         {activeSubTab === "courses" && (
           <div className="animate-fade-in">
             <CourseApprovalPanel token={token} />
+          </div>
+        )}
+
+        {activeSubTab === "enrollments" && (
+          <div className="animate-fade-in">
+            <EnrollmentsAdminPanel token={token} />
           </div>
         )}
 

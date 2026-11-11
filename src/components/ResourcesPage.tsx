@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { accountRequest, ApiError, request } from "../lib/api";
 import { useSEO } from "../hooks/useSEO";
+import { getStoredSession } from "../lib/session";
 
 interface Resource {
   id: string;
@@ -61,8 +62,11 @@ export default function ResourcesPage() {
     if (level    !== ALL) params.set("level",    level);
     if (format   !== ALL) params.set("format",   format);
     if (language !== ALL) params.set("language", language);
-    request<Resource[]>(`/resources${params.size ? `?${params}` : ""}`)
-      .then((data) => { setResources(data); setLoading(false); })
+    // Signed-in students and guardians also see resources marked "enrolled only".
+    const path = `/resources${params.size ? `?${params}` : ""}`;
+    const session = getStoredSession(["student", "guardian", "tutor"]);
+    (session ? accountRequest<Resource[]>(path, session.token) : request<Resource[]>(path))
+      .then((data) => { setResources(data); setError(null); setLoading(false); })
       .catch(() => { setError("Could not load resources. Please try again."); setLoading(false); });
   }, [program, level, format, language]);
 

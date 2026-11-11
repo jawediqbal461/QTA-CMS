@@ -33,7 +33,12 @@ export default function AdminLogin({ onLoginSuccess, onBackToHome }: AdminLoginP
 
     setIsLoading(true);
     try {
-      const { token } = await loginAdmin(email.trim(), password);
+      const { token, account } = await loginAdmin(email.trim(), password);
+      if (account.role !== "ACADEMY_ADMIN" && account.role !== "PLATFORM_ADMIN") {
+        setIsLoading(false);
+        setError("This account does not have administrator access.");
+        return;
+      }
       setIsLoading(false);
       setSuccess(true);
 
@@ -158,11 +163,6 @@ export default function AdminLogin({ onLoginSuccess, onBackToHome }: AdminLoginP
               />
               <span>Remember active session</span>
             </label>
-            
-            <span className="text-[10px] text-amber-500 font-bold hover:underline cursor-pointer flex items-center space-x-1">
-              <HelpCircle size={10} />
-              <span>Reset Token</span>
-            </span>
           </div>
 
           {/* ERROR STATUS WINDOW */}

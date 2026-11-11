@@ -7,12 +7,8 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
-import {
-  Tutor, Student, Lesson, Curriculum,
-  INITIAL_TUTORS, INITIAL_STUDENTS, INITIAL_LESSONS, INITIAL_CURRICULUM,
-} from "./data/mockData";
 import legacyBlogIndex from "./data/blog-legacy/index.json";
-import { clearStoredAdminToken, getStoredAdminToken } from "./lib/api";
+import { accountRequest, ApiError, clearStoredAdminToken, getStoredAdminToken } from "./lib/api";
 
 // PublicHome is the landing view, so it's loaded eagerly.
 // Everything else is only needed after explicit navigation, so it's
@@ -49,230 +45,30 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // --- STATE ---
-  const [tutors, setTutors] = useState<Tutor[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
-
-  const [adminInitialSubTab, setAdminInitialSubTab] = useState<"overview" | "architecture" | "sitemap" | "database" | "curriculum" | "profiles" | "quran_crud" | "blog_crud" | undefined>(undefined);
-  const [activeLessonInClassroom, setActiveLessonInClassroom] = useState<Lesson | null>(null);
-
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [deskMenuOpen, setDeskMenuOpen] = useState(false);
-  const [isAnnouncementVisible, setIsAnnouncementVisible] = useState<boolean>(true);
 
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => getStoredAdminToken() !== null);
 
-  // --- INITIALIZATION FROM LOCALSTORAGE ---
+  // A stored token can be expired, revoked, or belong to a non-admin account; drop it instead of showing an empty CMS.
   useEffect(() => {
-    try {
-      const storedTutors = localStorage.getItem("qta_tutors");
-      const storedStudents = localStorage.getItem("qta_students");
-      const storedLessons = localStorage.getItem("qta_lessons");
-      const storedCurriculums = localStorage.getItem("qta_curriculums");
-
-      if (storedTutors) {
-        const parsed: Tutor[] = JSON.parse(storedTutors);
-        const updated = parsed.map(t => {
-          if (t.hourlyRate === undefined) {
-            const orig = INITIAL_TUTORS.find(o => o.id === t.id);
-            return { ...t, hourlyRate: orig?.hourlyRate || 30 };
-          }
-          return t;
-        });
-        setTutors(updated);
-      } else {
-        setTutors(INITIAL_TUTORS);
-        localStorage.setItem("qta_tutors", JSON.stringify(INITIAL_TUTORS));
-      }
-
-      if (storedStudents) setStudents(JSON.parse(storedStudents));
-      else {
-        setStudents(INITIAL_STUDENTS);
-        localStorage.setItem("qta_students", JSON.stringify(INITIAL_STUDENTS));
-      }
-
-      if (storedLessons) setLessons(JSON.parse(storedLessons));
-      else {
-        setLessons(INITIAL_LESSONS);
-        localStorage.setItem("qta_lessons", JSON.stringify(INITIAL_LESSONS));
-      }
-
-      if (storedCurriculums) setCurriculums(JSON.parse(storedCurriculums));
-      else {
-        setCurriculums(INITIAL_CURRICULUM);
-        localStorage.setItem("qta_curriculums", JSON.stringify(INITIAL_CURRICULUM));
-      }
-    } catch (e) {
-      console.error("Failed to load local storage state", e);
-      // Fallbacks
-      setTutors(INITIAL_TUTORS);
-      setStudents(INITIAL_STUDENTS);
-      setLessons(INITIAL_LESSONS);
-      setCurriculums(INITIAL_CURRICULUM);
-    }
-  }, []);
-
-  // --- SAVE STATE PERSISTENCE HELPERS ---
-  const saveTutors = (updated: Tutor[]) => {
-    setTutors(updated);
-    localStorage.setItem("qta_tutors", JSON.stringify(updated));
-  };
-
-  const saveStudents = (updated: Student[]) => {
-    setStudents(updated);
-    localStorage.setItem("qta_students", JSON.stringify(updated));
-  };
-
-  const saveLessons = (updated: Lesson[]) => {
-    setLessons(updated);
-    localStorage.setItem("qta_lessons", JSON.stringify(updated));
-  };
-
-  const saveCurriculums = (updated: Curriculum[]) => {
-    setCurriculums(updated);
-    localStorage.setItem("qta_curriculums", JSON.stringify(updated));
-  };
-
-  // --- STATE MUTATORS ---
-
-  // Triggered when student books a lesson
-  // Triggered when tutor schedules a lesson
-  // Save updated weekly slots
-  // Launch live classroom
-  const handleJoinClassroom = (lesson: Lesson) => {
-    // Force status to "live" if it was scheduled
-    const updatedLessons = lessons.map(l => {
-      if (l.id === lesson.id) {
-        return { ...l, status: "live" as const };
-      }
-      return l;
-    });
-    saveLessons(updatedLessons);
-
-    const activeLess = updatedLessons.find(l => l.id === lesson.id) || lesson;
-    setActiveLessonInClassroom(activeLess);
-    navigate("/classroom");
-  };
-
-  // End live class & submit assessment results
-  const handleCompleteLessonInClassroom = (
-    notes: string,
-    newMistakes: { type: string; description: string; severity: "minor" | "major" }[]
-  ) => {
-    if (!activeLessonInClassroom) return;
-
-    const currentLessonId = activeLessonInClassroom.id;
-    const currentStudentId = activeLessonInClassroom.studentId;
-
-    // 1. Mark lesson as completed
-    const updatedLessons = lessons.map(l => {
-      if (l.id === currentLessonId) {
-        return { ...l, status: "completed" as const, notes };
-      }
-      return l;
-    });
-    saveLessons(updatedLessons);
-
-    // 2. Append mistakes to student and slightly tweak their Tajweed score based on mistakes count
-    const studentObj = students.find(s => s.id === currentStudentId);
-    if (studentObj) {
-      const formattedMistakes = newMistakes.map(m => ({
-        id: "mistake-" + Date.now() + "-" + Math.random(),
-        date: new Date().toISOString().split("T")[0],
-        type: m.type as any,
-        description: m.description,
-        severity: m.severity
-      }));
-
-      // Adjust score: penalize -2 for minor, -5 for major
-      let scorePenalty = 0;
-      newMistakes.forEach(m => {
-        scorePenalty += m.severity === "major" ? 5 : 2;
-      });
-      const newScore = Math.max(60, Math.min(100, studentObj.progress.tajweedScore - scorePenalty + (newMistakes.length === 0 ? 3 : 0)));
-
-      // Nudge memorization progress forward slightly on each completed lesson.
-      const newHifzProgress = Math.min(100, studentObj.progress.hifzProgress + 1);
-
-      const updatedStudent: Student = {
-        ...studentObj,
-        progress: {
-          ...studentObj.progress,
-          tajweedScore: newScore,
-          hifzProgress: newHifzProgress,
-          recentMistakes: [...formattedMistakes, ...studentObj.progress.recentMistakes].slice(0, 5) // Keep top 5
+    const token = getStoredAdminToken();
+    if (!token) return;
+    accountRequest<{ role: string }>("/auth/me", token).then(
+      (me) => {
+        if (me.role !== "ACADEMY_ADMIN" && me.role !== "PLATFORM_ADMIN") {
+          clearStoredAdminToken();
+          setIsAdminAuthenticated(false);
         }
-      };
-
-      const updatedStudents = students.map(s => {
-        if (s.id === currentStudentId) return updatedStudent;
-        return s;
-      });
-      saveStudents(updatedStudents);
-    }
-
-    // 3. Increment lessonsCompleted count on tutor profile
-    const tutorId = activeLessonInClassroom.tutorId;
-    const updatedTutors = tutors.map(t => {
-      if (t.id === tutorId) {
-        return { ...t, lessonsCompleted: t.lessonsCompleted + 1 };
-      }
-      return t;
-    });
-    saveTutors(updatedTutors);
-
-    setActiveLessonInClassroom(null);
-    navigate("/tutor"); // return to tutor portal default
-  };
-
-  // Admin CMS - Curriculum Actions
-  const handleAddCurriculum = (newCurr: Curriculum) => {
-    const updated = [newCurr, ...curriculums];
-    saveCurriculums(updated);
-  };
-
-  const handleDeleteCurriculum = (id: string) => {
-    const updated = curriculums.filter(c => c.id !== id);
-    saveCurriculums(updated);
-  };
-
-  // Admin CMS - Public Profile Update
-  const handleUpdateTutorProfile = (tutorId: string, updatedTutor: Partial<Tutor>) => {
-    const updated = tutors.map(t => {
-      if (t.id === tutorId) {
-        return { ...t, ...updatedTutor };
-      }
-      return t;
-    });
-    saveTutors(updated);
-  };
-
-  // New student registration — creates a real Student record, saved to local storage
-  // like every other piece of app data (this pilot has no backend to send it to).
-  // New tutor application — creates a real Tutor record with a unique slug, so the
-  // new profile shows up immediately in the Scholars Registry with a real, shareable URL.
-  // Reset demo defaults helper
-  const handleResetDemoData = () => {
-    if (window.confirm("Do you want to restore the tutoring academy database to default seeds? All manual bookings, curriculum changes, and mistake logs will be reset.")) {
-      localStorage.removeItem("qta_tutors");
-      localStorage.removeItem("qta_students");
-      localStorage.removeItem("qta_lessons");
-      localStorage.removeItem("qta_curriculums");
-
-      setTutors(INITIAL_TUTORS);
-      setStudents(INITIAL_STUDENTS);
-      setLessons(INITIAL_LESSONS);
-      setCurriculums(INITIAL_CURRICULUM);
-      setActiveLessonInClassroom(null);
-      navigate("/tutor");
-    }
-  };
-
-  // Get active student and tutor for active classroom stream
-  const classroomStudent = students.find(s => s.id === activeLessonInClassroom?.studentId) || students[0];
-  const classroomTutor = tutors.find(t => t.id === activeLessonInClassroom?.tutorId) || tutors[0];
+      },
+      (error) => {
+        if (error instanceof ApiError && error.status === 401) {
+          clearStoredAdminToken();
+          setIsAdminAuthenticated(false);
+        }
+      },
+    );
+  }, [isAdminAuthenticated]);
 
   // Nav active-state helpers, driven by the real browser URL
   const isPath = (path: string) => location.pathname === path;
@@ -280,45 +76,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white flex flex-col font-sans selection:bg-emerald-500/30 selection:text-white">
-
-      {/* GLOBAL PERSISTENT ANNOUNCEMENT BAR */}
-      <AnimatePresence>
-        {isAnnouncementVisible && isAdminAuthenticated && isPathPrefix("/admin") && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden bg-gradient-to-r from-emerald-900 via-emerald-950 to-neutral-950 border-b border-emerald-500/15 text-neutral-200 px-4 py-2 text-xs font-medium flex flex-wrap items-center justify-between gap-2 shadow-lg relative z-50"
-          >
-            <div className="flex items-center space-x-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <Sparkles size={13} className="text-amber-400 animate-pulse shrink-0" />
-              <span>
-                Prototype content tools use demo data stored in this browser.
-              </span>
-            </div>
-            <div className="flex items-center space-x-3 ml-auto sm:ml-0">
-              <button
-                onClick={handleResetDemoData}
-                className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 transition-all font-bold px-3 py-1 rounded-lg text-[10px] tracking-wider uppercase cursor-pointer shadow-md hover:shadow-emerald-500/10 active:scale-95"
-              >
-                Reset local demo data
-              </button>
-              <button
-                onClick={() => setIsAnnouncementVisible(false)}
-                className="text-neutral-400 hover:text-white transition p-1 rounded-full hover:bg-white/5 cursor-pointer"
-                title="Dismiss Banner"
-                aria-label="Dismiss announcement banner"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* MASTER SYSTEM HEADER */}
       <header className="sticky top-0 z-40 bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-900/65 shadow-[0_4px_30px_rgba(0,0,0,0.4)]">
@@ -574,29 +331,15 @@ export default function App() {
             </div>
 
             <button
-              onClick={() => {
-                if (activeLessonInClassroom) {
-                  navigate("/classroom");
-                } else {
-                  const scheduled = lessons.find(l => l.status === "scheduled" || l.status === "live");
-                  if (scheduled) {
-                    handleJoinClassroom(scheduled);
-                  } else {
-                    alert("Please schedule a lesson first or join from the Portal desks directly!");
-                  }
-                }
-              }}
+              onClick={() => navigate("/classroom/demo")}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 relative cursor-pointer ${
-                isPath("/classroom")
+                isPathPrefix("/classroom")
                   ? "bg-neutral-800 text-white border border-neutral-700/50"
                   : "text-neutral-400 hover:text-white hover:bg-white/5"
               }`}
             >
               <Play size={13} className="text-emerald-400" />
               <span>Tutoring Class</span>
-              {lessons.filter(l => l.status === "scheduled" || l.status === "live").length > 0 && (
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-              )}
             </button>
 
 
@@ -604,9 +347,6 @@ export default function App() {
 
           {/* MOBILE TOGGLE BUTTON */}
           <div className="flex lg:hidden items-center space-x-2">
-            {lessons.filter(l => l.status === "scheduled" || l.status === "live").length > 0 && !isPath("/classroom") && (
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse block" />
-            )}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="p-2.5 bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 hover:border-neutral-700 transition rounded-xl text-neutral-300 hover:text-white cursor-pointer"
@@ -729,20 +469,11 @@ export default function App() {
 
                 <button
                   onClick={() => {
-                    if (activeLessonInClassroom) {
-                      navigate("/classroom");
-                    } else {
-                      const scheduled = lessons.find(l => l.status === "scheduled" || l.status === "live");
-                      if (scheduled) {
-                        handleJoinClassroom(scheduled);
-                      } else {
-                        alert("Please schedule a lesson first!");
-                      }
-                    }
+                    navigate("/classroom/demo");
                     setIsMobileMenuOpen(false);
                   }}
                   className={`p-3 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1.5 border ${
-                    isPath("/classroom")
+                    isPathPrefix("/classroom")
                       ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/30"
                       : "bg-neutral-900 text-neutral-400 border-transparent hover:text-white hover:bg-neutral-850"
                   }`}
@@ -845,17 +576,7 @@ export default function App() {
 
             {/* Public Landing Page */}
             <Route path="/" element={
-              <PublicHome
-                curriculums={curriculums}
-                onNavigateToPortal={(portal) => {
-                  const path = portal === "tutor" ? "/tutor" : portal === "student" ? "/student" : portal === "classroom" ? "/classroom" : "/admin";
-                  navigate(path);
-                }}
-                onNavigateToAdmin={(subTab) => {
-                  setAdminInitialSubTab(subTab);
-                  navigate("/admin/content");
-                }}
-              />
+              <PublicHome />
             } />
 
             <Route path="/tutors" element={<PublicTutors />} />
@@ -880,11 +601,6 @@ export default function App() {
             <Route path="/tutor" element={React.createElement(AccountPortal, { key: "tutor", role: "TUTOR" })} />
             <Route path="/admin/tutors" element={isAdminAuthenticated ? (
               <AdminCMS
-                curriculums={curriculums}
-                tutors={tutors}
-                onAddCurriculum={handleAddCurriculum}
-                onDeleteCurriculum={handleDeleteCurriculum}
-                onUpdateTutorProfile={handleUpdateTutorProfile}
                 initialSubTab="tutor_applications"
                 token={getStoredAdminToken() ?? ""}
                 onLogout={() => { clearStoredAdminToken(); setIsAdminAuthenticated(false); }}
@@ -896,11 +612,6 @@ export default function App() {
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/admin/operations" element={isAdminAuthenticated ? (
               <AdminCMS
-                curriculums={curriculums}
-                tutors={tutors}
-                onAddCurriculum={handleAddCurriculum}
-                onDeleteCurriculum={handleDeleteCurriculum}
-                onUpdateTutorProfile={handleUpdateTutorProfile}
                 initialSubTab="lesson_recovery"
                 token={getStoredAdminToken() ?? ""}
                 onLogout={() => { clearStoredAdminToken(); setIsAdminAuthenticated(false); }}
@@ -919,11 +630,6 @@ export default function App() {
             {/* Admin CMS and database layout */}
             <Route path="/admin" element={isAdminAuthenticated ? (
               <AdminCMS
-                curriculums={curriculums}
-                tutors={tutors}
-                onAddCurriculum={handleAddCurriculum}
-                onDeleteCurriculum={handleDeleteCurriculum}
-                onUpdateTutorProfile={handleUpdateTutorProfile}
                 initialSubTab="accounts"
                 token={getStoredAdminToken() ?? ""}
                 onLogout={() => { clearStoredAdminToken(); setIsAdminAuthenticated(false); }}
@@ -935,12 +641,7 @@ export default function App() {
             <Route path="/admin/content" element={
               isAdminAuthenticated ? (
                 <AdminCMS
-                  curriculums={curriculums}
-                  tutors={tutors}
-                  onAddCurriculum={handleAddCurriculum}
-                  onDeleteCurriculum={handleDeleteCurriculum}
-                  onUpdateTutorProfile={handleUpdateTutorProfile}
-                  initialSubTab={adminInitialSubTab || "overview"}
+                  initialSubTab="overview"
                   token={getStoredAdminToken() ?? ""}
                   onLogout={() => {
                     clearStoredAdminToken();

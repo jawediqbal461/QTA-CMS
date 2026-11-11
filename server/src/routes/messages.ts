@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "../middleware/auth.js";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { prisma } from "../lib/prisma.js";
+import { rateLimit } from "../middleware/rateLimit.js";
 
 export const messagesRouter = Router();
 messagesRouter.use(requireAuth);
@@ -86,15 +87,67 @@ const msgBody = z.object({
 });
 
 // POST /api/messages — send a message
-messagesRouter.post("/", asyncHandler(async (req, res) => {
+messagesRouter.post("/", rateLimit({
+  windowMs: 60_000, max: 30, message: "You are sending messages too quickly.",
+  key: (req) => req.session?.accountId ?? req.ip ?? "unknown",
+}), asyncHandler(async (req, res) => {
   const { accountId, academyId } = req.session!;
   const parsed = msgBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid input." });
 
   const { toId, body } = parsed.data;
+  if (toId === accountId) return res.status(400).json({ error: "You cannot message yourself." });
+  const recipient = await prisma.academyMembership.findUnique({
+    where: { academyId_accountId: { academyId, accountId: toId } },
+    select: { status: true },
+  });
+  if (recipient?.status !== "ACTIVE") return res.status(404).json({ error: "Recipient not found." });
   const msg = await prisma.message.create({
     data: { academyId, fromId: accountId, toId, body },
     select: { id: true, fromId: true, toId: true, body: true, readAt: true, createdAt: true },
   });
   res.status(201).json(msg);
+}));
+
+// GET /api/messages/contacts — people this account can start a conversation with
+messagesRouter.get("/contacts", asyncHandler(async (req, res) => {
+  const { accountId, academyId, role } = req.session!;
+  const ids = new Set<string>();
+  if (role === "TUTOR") {
+    const [bookings, requests] = await Promise.all([
+      prisma.booking.findMany({
+        where: { academyId, tutorId: accountId },
+        select: { student: { select: { id: true, studentLinks: { select: { guardianId: true } } } } },
+      }),
+      prisma.learningRequest.findMany({
+        where: { academyId, assignedTutorId: accountId, status: { in: ["MATCHED", "ACCEPTED"] } },
+        select: { guardianId: true, studentId: true },
+      }),
+    ]);
+    for (const { student } of bookings) {
+      ids.add(student.id);
+      for (const link of student.studentLinks) ids.add(link.guardianId);
+    }
+    for (const request of requests) { ids.add(request.guardianId); ids.add(request.studentId); }
+  } else if (role === "GUARDIAN" || role === "STUDENT") {
+    const learner = role === "STUDENT" ? { id: accountId } : { studentLinks: { some: { guardianId: accountId } } };
+    const [bookings, requests] = await Promise.all([
+      prisma.booking.findMany({ where: { academyId, student: learner }, select: { tutorId: true } }),
+      role === "GUARDIAN"
+        ? prisma.learningRequest.findMany({ where: { academyId, guardianId: accountId, assignedTutorId: { not: null } }, select: { assignedTutorId: true } })
+        : Promise.resolve([] as { assignedTutorId: string | null }[]),
+    ]);
+    for (const { tutorId } of bookings) ids.add(tutorId);
+    for (const { assignedTutorId } of requests) if (assignedTutorId) ids.add(assignedTutorId);
+  }
+  ids.delete(accountId);
+  const people = await prisma.account.findMany({
+    where: {
+      id: { in: [...ids] }, email: { not: { endsWith: "@learner.invalid" } },
+      memberships: { some: { academyId, status: "ACTIVE" } },
+    },
+    select: { id: true, fullName: true },
+    orderBy: { fullName: "asc" },
+  });
+  res.json(people);
 }));

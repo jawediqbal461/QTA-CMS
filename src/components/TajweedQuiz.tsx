@@ -137,7 +137,7 @@ export default function TajweedQuiz() {
     const finalScore = score + (selected === QUESTIONS[currentQ].answer && !submitted ? 1 : 0);
     setSaving(true);
     try {
-      await fetch("/api/quiz", {
+      const res = await fetch("/api/quiz", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -148,6 +148,7 @@ export default function TajweedQuiz() {
           answers,
         }),
       });
+      if (!res.ok) throw new Error("save failed");
       setSaved(true);
     } catch {
       setSaveError("Could not save result — but your score is shown above.");

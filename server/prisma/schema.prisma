@@ -68,6 +68,12 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum EnrollmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
 enum CourseStatus {
   DRAFT
   PENDING_REVIEW
@@ -90,6 +96,8 @@ model Academy {
   learningRequests LearningRequest[]
   payments         PilotPayment[]
   courses          Course[]
+  blogPosts        BlogPost[]
+  courseEnrollments CourseEnrollment[]
 
   @@map("academies")
 }
@@ -123,6 +131,8 @@ model Account {
   reviewsAuthored  TutorReview[]     @relation("ReviewsAuthored")
   messagesSent     Message[]         @relation("MessagesSent")
   messagesReceived Message[]         @relation("MessagesReceived")
+  enrollmentsMade   CourseEnrollment[] @relation("EnrollmentsMade")
+  enrollmentsAsStudent CourseEnrollment[] @relation("EnrollmentsAsStudent")
 
   @@map("accounts")
 }
@@ -393,6 +403,7 @@ model Course {
   updatedAt      DateTime     @updatedAt
 
   modules CourseModule[]
+  enrollments CourseEnrollment[]
 
   @@index([academyId, status, program])
   @@index([tutorId])
@@ -496,4 +507,76 @@ model LearningRequest {
   @@index([guardianId])
   @@index([assignedTutorId])
   @@map("learning_requests")
+}
+
+model BlogPost {
+  id             String   @id @default(uuid())
+  academyId      String
+  academy        Academy  @relation(fields: [academyId], references: [id], onDelete: Cascade)
+  title          String
+  slug           String
+  excerpt        String
+  content        String
+  author         String
+  coverImage     String
+  status         String   @default("Draft")
+  publishedAt    DateTime @default(now())
+  tags           String[]
+  seoTitle       String?
+  seoDescription String?
+  seoImage       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([academyId, slug])
+  @@index([academyId, status, publishedAt])
+  @@map("blog_posts")
+}
+
+// The Quran text itself ships with the app (src/data/quran-verses). A row here
+// overrides individual fields for one surah on the public site.
+model QuranSurahOverride {
+  number                 Int      @id
+  nameArabic             String?
+  nameEnglish            String?
+  englishNameTranslation String?
+  revelationType         String?
+  audioUrl               String?
+  seoTitle               String?
+  seoDescription         String?
+  ayahs                  Json?
+  updatedAt              DateTime @updatedAt
+
+  @@map("quran_surah_overrides")
+}
+
+model QuranJuz {
+  number      Int      @id
+  nameArabic  String
+  nameEnglish String
+  startInfo   String
+  updatedAt   DateTime @updatedAt
+
+  @@map("quran_juz")
+}
+
+model CourseEnrollment {
+  id         String           @id @default(uuid())
+  academyId  String
+  academy    Academy          @relation(fields: [academyId], references: [id], onDelete: Cascade)
+  courseId   String
+  course     Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  enrolledById String
+  enrolledBy Account          @relation("EnrollmentsMade", fields: [enrolledById], references: [id], onDelete: Cascade)
+  studentId  String
+  student    Account          @relation("EnrollmentsAsStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  status     EnrollmentStatus @default(PENDING)
+  notes      String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@unique([courseId, studentId])
+  @@index([academyId, status, createdAt])
+  @@index([enrolledById])
+  @@map("course_enrollments")
 }

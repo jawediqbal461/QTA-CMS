@@ -6,6 +6,40 @@ import {
 import index from "../data/quran-legacy/index.json";
 import { useSEO } from "../hooks/useSEO";
 import { extractSurahIntro } from "../lib/legacyQuranContent";
+import { request } from "../lib/api";
+import type { JuzRow, SurahOverride, SurahOverrideSummary } from "../lib/content";
+import { INITIAL_JUZ } from "../data/mockData";
+
+type IndexEntry = { slug: string; title: string; number: number };
+
+// Admin edits (names, audio, SEO, verse text, Juz names) live in the database and are
+// layered over the static Quran data that ships with the app.
+let overridesPromise: Promise<Map<number, SurahOverrideSummary>> | null = null;
+function loadOverrides() {
+  overridesPromise ??= request<SurahOverrideSummary[]>("/quran/overrides").then(
+    (rows) => new Map(rows.map((row) => [row.number, row])),
+    () => new Map<number, SurahOverrideSummary>(),
+  );
+  return overridesPromise;
+}
+function useOverrides() {
+  const [overrides, setOverrides] = useState<Map<number, SurahOverrideSummary>>(new Map());
+  useEffect(() => {
+    let active = true;
+    loadOverrides().then((map) => { if (active) setOverrides(map); });
+    return () => { active = false; };
+  }, []);
+  return overrides;
+}
+function titleFor(entry: IndexEntry, override?: SurahOverrideSummary) {
+  if (!override || (!override.nameEnglish && !override.nameArabic)) return entry.title;
+  const [english, arabic] = entry.title.split(" - ");
+  return `${override.nameEnglish || english} - ${override.nameArabic || arabic}`;
+}
+function useEntries(): IndexEntry[] {
+  const overrides = useOverrides();
+  return useMemo(() => (index as IndexEntry[]).map((entry) => ({ ...entry, title: titleFor(entry, overrides.get(entry.number)) })), [overrides]);
+}
 
 interface Ayah {
   numberInSurah: number;
@@ -42,12 +76,13 @@ const ARABIC_FONTS: { key: "naskh" | "amiri"; label: string; stack: string }[] =
 // to /quran/ just to switch Surah.
 function SurahListNav({ activeSlug }: { activeSlug: string }) {
   const [query, setQuery] = useState("");
+  const entries = useEntries();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return index;
-    return index.filter((s) => s.title.toLowerCase().includes(q) || String(s.number).includes(q));
-  }, [query]);
+    if (!q) return entries;
+    return entries.filter((s) => s.title.toLowerCase().includes(q) || String(s.number).includes(q));
+  }, [query, entries]);
 
   return (
     <div className="flex flex-col h-full">
@@ -91,17 +126,45 @@ function SurahListNav({ activeSlug }: { activeSlug: string }) {
   );
 }
 
+function JuzSection() {
+  const [rows, setRows] = useState<Map<number, JuzRow>>(new Map());
+  useEffect(() => {
+    let active = true;
+    request<JuzRow[]>("/quran/juz").then((data) => { if (active) setRows(new Map(data.map((row) => [row.number, row]))); }, () => {});
+    return () => { active = false; };
+  }, []);
+  const juz = INITIAL_JUZ.map((base) => ({ ...base, ...(rows.get(base.number) ?? {}) }));
+  return (
+    <section className="mt-14">
+      <h2 className="text-xl font-black text-white mb-4 text-center">Browse by Juz (Para)</h2>
+      <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {juz.map((entry) => (
+          <li key={entry.number} className="flex items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3">
+            <span className="w-8 h-8 shrink-0 rounded-lg bg-amber-950 text-amber-400 border border-amber-500/20 flex items-center justify-center text-xs font-bold">{entry.number}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs font-bold text-white">{entry.nameEnglish}</span>
+              <span className="block truncate text-[11px] text-neutral-500">Starts at {entry.startInfo}</span>
+            </span>
+            <span className="font-arabic text-neutral-400" dir="rtl" lang="ar">{entry.nameArabic}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function SurahIndexPage() {
   const [query, setQuery] = useState("");
+  const entries = useEntries();
   useSEO({ title: "Quran", description: "Browse and read the Holy Quran by Surah, with English translation." });
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return index;
-    return index.filter(
+    if (!q) return entries;
+    return entries.filter(
       (s) => s.title.toLowerCase().includes(q) || String(s.number).includes(q),
     );
-  }, [query]);
+  }, [query, entries]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:py-14">
@@ -151,6 +214,7 @@ function SurahIndexPage() {
       {filtered.length === 0 && (
         <p className="text-center text-sm text-neutral-500 mt-10">No Surah matches “{query}”.</p>
       )}
+      <JuzSection />
     </div>
   );
 }
@@ -179,18 +243,25 @@ function SurahDetailPage({ surah }: { surah: { slug: string; title: string; numb
     try { localStorage.setItem("qta_quran_fontFamily", fontFamily); } catch { /* ignore */ }
   }, [fontFamily]);
 
-  const [englishTitle] = surah.title.split(" - ");
+  const [override, setOverride] = useState<SurahOverride | null>(null);
+  const [englishTitle] = titleFor(surah, override ?? undefined).split(" - ");
 
   useSEO({
-    title: `${englishTitle} — Read & Listen Online`,
-    description: `Read Surah ${englishTitle} in Arabic with English translation, and listen to recitation audio.`,
+    title: override?.seoTitle || `${englishTitle} — Read & Listen Online`,
+    description: override?.seoDescription || `Read Surah ${englishTitle} in Arabic with English translation, and listen to recitation audio.`,
   });
 
   useEffect(() => {
     setVerses(undefined);
     setIntro(undefined);
+    setOverride(null);
     setMobileNavOpen(false);
     let active = true;
+
+    request<SurahOverride>(`/quran/surahs/${surah.number}`).then(
+      (row) => { if (active) setOverride(row); },
+      () => { /* no override saved for this surah */ },
+    );
 
     versePages[`../data/quran-verses/${surah.slug}.json`]().then(
       (m) => { if (active) setVerses(m.default); },
@@ -240,12 +311,12 @@ function SurahDetailPage({ surah }: { surah: { slug: string; title: string; numb
         <h1 className="text-2xl sm:text-3xl font-black text-white" dir="auto">{englishTitle}</h1>
         {verses && verses !== "error" && (
           <>
-            <p className="text-3xl font-arabic text-amber-400" dir="rtl" lang="ar">{verses.nameArabic}</p>
+            <p className="text-3xl font-arabic text-amber-400" dir="rtl" lang="ar">{override?.nameArabic || verses.nameArabic}</p>
             <div className="flex items-center justify-center gap-2 text-[11px] text-neutral-400">
-              <span className="px-2 py-0.5 rounded-full bg-neutral-950 border border-neutral-800">{verses.revelationType}</span>
-              <span className="px-2 py-0.5 rounded-full bg-neutral-950 border border-neutral-800">{verses.numberOfAyahs} Verses</span>
-              {verses.englishNameTranslation && (
-                <span className="px-2 py-0.5 rounded-full bg-neutral-950 border border-neutral-800">"{verses.englishNameTranslation}"</span>
+              <span className="px-2 py-0.5 rounded-full bg-neutral-950 border border-neutral-800">{override?.revelationType || verses.revelationType}</span>
+              <span className="px-2 py-0.5 rounded-full bg-neutral-950 border border-neutral-800">{override?.ayahs?.length || verses.numberOfAyahs} Verses</span>
+              {(override?.englishNameTranslation || verses.englishNameTranslation) && (
+                <span className="px-2 py-0.5 rounded-full bg-neutral-950 border border-neutral-800">"{override?.englishNameTranslation || verses.englishNameTranslation}"</span>
               )}
             </div>
           </>
@@ -306,10 +377,10 @@ function SurahDetailPage({ surah }: { surah: { slug: string; title: string; numb
         ) : <span />}
       </div>
 
-      {intro?.audioUrl && (
+      {(override?.audioUrl || intro?.audioUrl) && (
         <div className="mb-6 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 flex items-center gap-3">
           <Volume2 size={16} className="text-emerald-400 shrink-0" />
-          <audio controls preload="none" src={intro.audioUrl} className="w-full h-9" />
+          <audio controls preload="none" src={override?.audioUrl || intro?.audioUrl} className="w-full h-9" />
         </div>
       )}
 
@@ -320,7 +391,7 @@ function SurahDetailPage({ surah }: { surah: { slug: string; title: string; numb
         <p role="alert" className="text-center text-sm text-rose-400 py-10">This Surah could not be loaded. Reload the page to try again.</p>
       ) : (
         <ol className="space-y-4">
-          {verses.ayahs.map((ayah) => (
+          {(override?.ayahs?.length ? override.ayahs : verses.ayahs).map((ayah) => (
             <li key={ayah.numberInSurah} className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-5 sm:p-6 space-y-3">
               <div className="flex items-start justify-between gap-4">
                 <span className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-amber-950 text-amber-400 border border-amber-500/20 text-[11px] font-bold">
@@ -364,7 +435,7 @@ export default function LegacyQuran() {
   const { surahSlug } = useParams();
   const { pathname, search, hash } = useLocation();
   const lookupSlug = surahSlug === "surah-yasin" ? "surah-yaseen" : surahSlug;
-  const surah = index.find((entry) => entry.slug === lookupSlug);
+  const surah = (index as IndexEntry[]).find((entry) => entry.slug === lookupSlug);
   useSEO({ title: surah?.title ?? "Quran", noindex: !!surahSlug && !surah });
 
   if (!pathname.endsWith("/")) {

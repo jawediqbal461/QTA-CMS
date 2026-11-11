@@ -3,21 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { Award, Download, BookOpen, Star, ChevronLeft } from "lucide-react";
 import { accountRequest } from "../lib/api";
 import { useSEO } from "../hooks/useSEO";
+import { getStoredSession } from "../lib/session";
 
-type Session = { token: string; role: string; name: string; email: string } | null;
-
-function getSession(): Session {
-  for (const role of ["student", "guardian", "tutor"]) {
-    try {
-      const raw = sessionStorage.getItem(`qta_session_${role}`);
-      if (raw) {
-        const s = JSON.parse(raw);
-        if (s?.token) return s;
-      }
-    } catch { /* continue */ }
-  }
-  return null;
-}
 
 type Booking = {
   id: string;
@@ -28,7 +15,8 @@ type Booking = {
 
 export default function CertificatePage() {
   const navigate = useNavigate();
-  const session = getSession();
+  const [session] = useState(() => getStoredSession(["student", "guardian"]));
+  const [name, setName] = useState("");
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
@@ -37,7 +25,8 @@ export default function CertificatePage() {
 
   useEffect(() => {
     if (!session) { setLoading(false); return; }
-    accountRequest("/student/bookings", session.token)
+    accountRequest<{ fullName: string }>("/auth/me", session.token).then((me) => setName(me.fullName)).catch(() => {});
+    accountRequest("/guardian/bookings", session.token)
       .then((data: Booking[]) => {
         setBookings((data || []).filter(b => b.status === "COMPLETED"));
         setLoading(false);
@@ -103,7 +92,7 @@ export default function CertificatePage() {
             <p className="text-sm text-neutral-500 uppercase tracking-[0.2em] font-medium font-mono">This certifies that</p>
 
             <div className="space-y-1">
-              <h2 className="text-3xl font-black text-neutral-900 tracking-tight">{session.name}</h2>
+              <h2 className="text-3xl font-black text-neutral-900 tracking-tight">{name}</h2>
               <div className="h-0.5 w-24 bg-emerald-500 mx-auto rounded-full" />
             </div>
 
@@ -138,7 +127,7 @@ export default function CertificatePage() {
           {/* Bottom band */}
           <div className="bg-emerald-50 border-t border-emerald-100 px-10 py-4 text-center">
             <p className="text-[10px] text-emerald-700 font-mono tracking-wider uppercase">
-              new.qurantutorsacademy.com · Verified Academy Certificate
+              new.qurantutorsacademy.com · Academy Certificate
             </p>
           </div>
         </div>

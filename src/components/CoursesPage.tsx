@@ -5,6 +5,7 @@ import {
   RefreshCw, Send, Eye, EyeOff, XCircle,
 } from "lucide-react";
 import { request, accountRequest } from "../lib/api";
+import { EnrollBox, TutorEnrollments } from "./Enrollments";
 import { useSEO } from "../hooks/useSEO";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -67,6 +68,7 @@ export default function CoursesPage() {
     description: "Browse our structured Quran and Arabic courses — Tajweed, Hifz, Quranic Arabic, and more.",
   });
   const [courses, setCourses] = useState<PublicCourse[]>([]);
+  const [facets, setFacets] = useState<PublicCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -77,16 +79,17 @@ export default function CoursesPage() {
     setError(null);
     const params = new URLSearchParams();
     (Object.entries(filters) as [string, string][]).forEach(([k, v]) => { if (v) params.set(k, v); });
-    request<PublicCourse[]>(`/api/courses?${params}`)
-      .then(setCourses)
+    request<PublicCourse[]>(`/courses?${params}`)
+      .then((data) => { setCourses(data); if (!params.size) setFacets(data); })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load courses."))
       .finally(() => setLoading(false));
   }, [filters]);
 
-  const programs = [...new Set(courses.map((c) => c.program))].sort();
-  const levels   = [...new Set(courses.map((c) => c.level))].sort();
-  const languages = [...new Set(courses.map((c) => c.language))].sort();
-  const formats  = [...new Set(courses.map((c) => c.format))].sort();
+  const source = facets.length ? facets : courses;
+  const programs = [...new Set(source.map((c) => c.program))].sort();
+  const levels   = [...new Set(source.map((c) => c.level))].sort();
+  const languages = [...new Set(source.map((c) => c.language))].sort();
+  const formats  = [...new Set(source.map((c) => c.format))].sort();
 
   const selectCls = "bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500/50 cursor-pointer";
 
@@ -189,10 +192,7 @@ export default function CoursesPage() {
                     </ol>
                   </div>
                 )}
-                <button className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-sky-500 text-neutral-950 text-xs font-bold hover:bg-sky-400 transition">
-                  <span>Enquire about this course</span>
-                  <ArrowRight size={12} />
-                </button>
+                <EnrollBox course={course} />
               </div>
             )}
           </div>
@@ -466,6 +466,7 @@ export function TutorCoursePanel({ token }: { token: string }) {
           </div>
         </div>
       ))}
+      <TutorEnrollments token={token} />
     </div>
   );
 }

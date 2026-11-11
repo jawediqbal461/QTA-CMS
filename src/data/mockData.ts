@@ -793,16 +793,22 @@ const JUZ_ENGLISH_NAMES = [
   "Ha-Mim", "Qala Fama Khatbukum", "Qad Sami'allah", "Tabarakallazi", "Amma"
 ];
 
+// Standard Madinah mushaf: the surah and ayah where each Juz begins.
+const JUZ_STARTS: Array<[number, number]> = [
+  [1, 1], [2, 142], [2, 253], [3, 93], [4, 24], [4, 148], [5, 82], [6, 111], [7, 88], [8, 41],
+  [9, 93], [11, 6], [12, 53], [15, 1], [17, 1], [18, 75], [21, 1], [23, 1], [25, 21], [27, 56],
+  [29, 46], [33, 31], [36, 28], [39, 32], [41, 47], [46, 1], [51, 31], [58, 1], [67, 1], [78, 1],
+];
+
 export const INITIAL_JUZ: Juz[] = Array.from({ length: 30 }, (_, i) => {
-  const juzNum = i + 1;
-  const startSurahName = juzNum === 1 ? "Al-Fatihah" : juzNum === 15 ? "Al-Isra" : juzNum === 22 ? "Ya-Sin" : juzNum === 30 ? "An-Naba" : "Al-Baqarah";
-  const startSurahNum = juzNum === 1 ? 1 : juzNum === 15 ? 17 : juzNum === 22 ? 36 : juzNum === 30 ? 78 : 2;
+  const [surahNum, ayah] = JUZ_STARTS[i];
+  const startSurahName = SURAH_META[surahNum - 1].nameEnglish;
 
   return {
-    number: juzNum,
+    number: i + 1,
     nameArabic: JUZ_ARABIC_NAMES[i] || "جزء",
-    nameEnglish: `Juz ${juzNum} (${JUZ_ENGLISH_NAMES[i]})`,
-    startInfo: `${startSurahName} (Ch ${startSurahNum})`
+    nameEnglish: `Juz ${i + 1} (${JUZ_ENGLISH_NAMES[i]})`,
+    startInfo: `${startSurahName} (${surahNum}:${ayah})`
   };
 });
 

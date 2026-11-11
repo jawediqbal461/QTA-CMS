@@ -31,12 +31,19 @@ tutorRouter.put("/profile", asyncHandler(async (req, res) => {
   const parsed = tutorFields.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Check your profile fields, languages, and hourly rate." });
   const { accountId, academyId } = req.session!;
-  const updated = await prisma.tutorProfile.updateMany({
+  const current = await prisma.tutorProfile.findFirst({
     where: { accountId, academyId, approvalStatus: { not: "SUSPENDED" } },
-    data: { ...parsed.data, approvalStatus: "PENDING" },
   });
-  if (!updated.count) return res.status(403).json({ error: "This profile cannot be submitted." });
-  res.json({ approvalStatus: "PENDING" });
+  if (!current) return res.status(403).json({ error: "This profile cannot be submitted." });
+  // Only changes to what the academy actually reviews send an approved profile back to review.
+  const list = (values: string[]) => values.join("\u0000");
+  const reviewed = (current.bio ?? "") !== (parsed.data.bio ?? "") ||
+    (current.qualifications ?? "") !== (parsed.data.qualifications ?? "") ||
+    list(current.specialties) !== list(parsed.data.specialties) ||
+    current.experienceYears !== parsed.data.experienceYears;
+  const approvalStatus = current.approvalStatus === "APPROVED" && !reviewed ? "APPROVED" : "PENDING";
+  await prisma.tutorProfile.update({ where: { accountId }, data: { ...parsed.data, approvalStatus } });
+  res.json({ approvalStatus });
 }));
 
 tutorRouter.put("/availability", asyncHandler(async (req, res) => {

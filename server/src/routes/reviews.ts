@@ -20,7 +20,18 @@ reviewsRouter.post("/", requireAuth, asyncHandler(async (req, res) => {
   const parsed = reviewBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid input." });
 
+  const { academyId } = req.session!;
   const tutorId = req.params.tutorId;
+  const completed = await prisma.booking.findFirst({
+    where: {
+      academyId, tutorId, status: "COMPLETED",
+      student: role === "STUDENT" ? { id: accountId } : { studentLinks: { some: { guardianId: accountId } } },
+    },
+    select: { id: true },
+  });
+  if (!completed) {
+    return res.status(403).json({ error: "You can review a tutor after completing a lesson with them." });
+  }
   const review = await prisma.tutorReview.upsert({
     where: { tutorId_authorId: { tutorId, authorId: accountId } },
     create: { tutorId, authorId: accountId, rating: parsed.data.rating, comment: parsed.data.comment },

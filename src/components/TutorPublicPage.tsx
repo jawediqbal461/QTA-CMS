@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useSEO } from "../hooks/useSEO";
 import { accountRequest } from "../lib/api";
+import { getStoredSession } from "../lib/session";
 
 type Slot = { weekday: number; startTime: string; endTime: string; timeZone: string };
 type Review = { id: string; rating: number; comment: string | null; createdAt: string; author: { fullName: string } };
@@ -39,19 +40,13 @@ export default function TutorPublicPage() {
   const [notFound, setNotFound] = useState(false);
 
   // Review form state
-  const [token] = useState<string | null>(() => {
-    for (const role of ["student", "guardian", "tutor"]) {
-      try {
-        const val = sessionStorage.getItem(`qta_session_${role}`);
-        if (val) { const t = JSON.parse(val)?.token; if (t) return t; }
-      } catch { /* continue */ }
-    }
-    return null;
-  });
+  const [session] = useState(() => getStoredSession(["student", "guardian"]));
+  const token = session?.token ?? null;
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewDone, setReviewDone] = useState(false);
+  const [reviewError, setReviewError] = useState("");
 
   useEffect(() => {
     if (!slug) return;
@@ -67,7 +62,7 @@ export default function TutorPublicPage() {
 
   useSEO(tutor ? {
     title: `${tutor.account.fullName} — Quran Tutor`,
-    description: tutor.bio?.slice(0, 160) ?? `Learn Quran with ${tutor.account.fullName}, certified tutor specializing in ${tutor.specialties.slice(0, 2).join(" & ")}.`,
+    description: tutor.bio?.slice(0, 160) ?? `Learn Quran with ${tutor.account.fullName}, approved tutor specializing in ${tutor.specialties.slice(0, 2).join(" & ")}.`,
     image: avatarUrl(tutor.account.fullName),
     schema: {
       "@type": "Person",
@@ -84,6 +79,7 @@ export default function TutorPublicPage() {
   const handleSubmitReview = async () => {
     if (!token || !slug) return;
     setReviewSubmitting(true);
+    setReviewError("");
     try {
       const res = await accountRequest(`/tutors/${slug}/reviews`, token, "POST", { rating: reviewRating, comment: reviewComment }) as { id?: string };
       if (res.id) {
@@ -91,6 +87,8 @@ export default function TutorPublicPage() {
         const updated = await fetch(`/api/tutors/${slug}`).then(r => r.json());
         setTutor(updated);
       }
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : "Could not submit your review.");
     } finally { setReviewSubmitting(false); }
   };
 
@@ -145,16 +143,13 @@ export default function TutorPublicPage() {
                 <img src={avatarUrl(name)} alt={name}
                   className="w-24 h-24 md:w-32 md:h-32 rounded-2xl object-cover border-4 border-emerald-500/30 shadow-xl" />
                 <span className="absolute -bottom-2 -right-2 bg-emerald-500 text-neutral-950 font-black px-2 py-0.5 rounded-lg text-[9px] uppercase tracking-wider flex items-center gap-0.5 shadow-lg">
-                  <ShieldCheck size={9} /> Verified
+                  <ShieldCheck size={9} /> Approved
                 </span>
               </div>
               <div className="space-y-2 flex-1">
                 <div className="flex flex-wrap gap-2">
                   <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest font-mono flex items-center gap-1">
-                    <Award size={10} className="text-amber-400" /> Verified Scholar
-                  </span>
-                  <span className="bg-amber-500/15 border border-amber-500/20 text-amber-400 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest font-mono">
-                    Ijazah Certified
+                    <Award size={10} className="text-amber-400" /> Academy-approved Tutor
                   </span>
                 </div>
                 <h1 className="text-2xl md:text-3xl font-black text-white">{name}</h1>
@@ -202,34 +197,22 @@ export default function TutorPublicPage() {
           {/* Bio */}
           <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-xl space-y-4">
             <h3 className="text-sm font-black text-emerald-400 uppercase tracking-wider font-mono">Bio & Credentials</h3>
-            <p className="text-sm text-neutral-300 leading-relaxed">{tutor.bio || "Experienced and certified Quran tutor."}</p>
+            <p className="text-sm text-neutral-300 leading-relaxed">{tutor.bio || "Quran tutor approved by the academy."}</p>
             {tutor.qualifications && (
               <div className="bg-neutral-950 border border-neutral-850 rounded-xl p-4 text-xs text-neutral-400">
                 <p className="font-bold text-white mb-1">Qualifications</p>
                 <p className="leading-relaxed">{tutor.qualifications}</p>
               </div>
             )}
-            <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-neutral-800">
-              <div>
-                <h5 className="font-bold text-white mb-1.5 text-xs flex items-center gap-1.5">
-                  <CheckCircle size={13} className="text-emerald-400" /> Verified Qualifications
-                </h5>
-                <ul className="space-y-1 text-xs text-neutral-400 list-disc list-inside">
-                  <li>B.A. in Islamic Studies (Al-Azhar University)</li>
-                  <li>Double Ijazah in Tajweed & Recitation</li>
-                  <li>Certified Member of International Quran Union</li>
-                </ul>
-              </div>
-              <div>
-                <h5 className="font-bold text-white mb-1.5 text-xs flex items-center gap-1.5">
-                  <CheckCircle size={13} className="text-emerald-400" /> Every Lesson Includes
-                </h5>
-                <ul className="space-y-1 text-xs text-neutral-400 list-disc list-inside">
-                  <li>HD video & audio virtual classroom</li>
-                  <li>Instant Tajweed mistake logging</li>
-                  <li>Free reschedule up to 2 hours before</li>
-                </ul>
-              </div>
+            <div className="pt-2 border-t border-neutral-800">
+              <h5 className="font-bold text-white mb-1.5 text-xs flex items-center gap-1.5">
+                <CheckCircle size={13} className="text-emerald-400" /> Every Lesson Includes
+              </h5>
+              <ul className="space-y-1 text-xs text-neutral-400 list-disc list-inside">
+                <li>Live online video classroom</li>
+                <li>Tutor notes and progress tracking after each lesson</li>
+                <li>Reschedule or cancel any time before the lesson starts</li>
+              </ul>
             </div>
           </div>
 
@@ -261,9 +244,6 @@ export default function TutorPublicPage() {
                         <div>
                           <p className="text-xs font-bold text-white flex items-center gap-1.5">
                             {rev.author.fullName}
-                            <span className="text-[8px] bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 px-1.5 rounded-full font-mono flex items-center gap-0.5">
-                              <UserCheck size={8} /> Verified
-                            </span>
                           </p>
                           <p className="text-[9px] text-neutral-500 font-mono">{new Date(rev.createdAt).toLocaleDateString()}</p>
                         </div>
@@ -311,6 +291,7 @@ export default function TutorPublicPage() {
                 >
                   <Send size={12} /> {reviewSubmitting ? "Submitting…" : "Submit Review"}
                 </button>
+                {reviewError && <p role="alert" className="text-xs text-rose-400">{reviewError}</p>}
               </div>
             )}
             {reviewDone && (
@@ -353,23 +334,14 @@ export default function TutorPublicPage() {
             </div>
 
             <button
-              onClick={() => navigate("/signup/student")}
+              onClick={() => navigate(`/${session?.role === "guardian" ? "guardian" : "student"}?tutor=${tutor.accountId}`)}
               className="w-full bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-black py-3 rounded-xl text-xs shadow-lg transition flex items-center justify-center gap-2"
             >
-              Book a Trial Lesson
+              Book a Lesson
             </button>
 
             <p className="text-[9px] text-center text-neutral-500 leading-normal">
-              45-minute free trial · reschedule up to 2 hours before
-            </p>
-          </div>
-
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 text-xs space-y-2">
-            <div className="flex items-center gap-2 text-white font-bold">
-              <ShieldCheck size={15} className="text-emerald-400" /> Academic Trust Guarantee
-            </div>
-            <p className="text-[11px] text-neutral-400 leading-relaxed">
-              Not satisfied? We'll issue a full refund and match you with another scholar — completely free.
+              45-minute lessons · sign in or register to choose a time
             </p>
           </div>
         </div>

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { prisma } from "../lib/prisma.js";
+import { rateLimit } from "../middleware/rateLimit.js";
 
 export const quizRouter = Router();
 
@@ -15,7 +16,7 @@ const quizResultBody = z.object({
 });
 
 // POST /api/quiz — save a quiz result (public, no auth needed)
-quizRouter.post("/", asyncHandler(async (req, res) => {
+quizRouter.post("/", rateLimit({ windowMs: 60 * 60_000, max: 20, message: "Too many quiz submissions. Try again later." }), asyncHandler(async (req, res) => {
   const parsed = quizResultBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid input." });
 

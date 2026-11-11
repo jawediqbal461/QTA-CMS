@@ -10,10 +10,17 @@ import { tutorFields } from "../lib/tutorProfile.js";
 import { queueVerification, validVerification } from "../lib/verification.js";
 import { mailConfig } from "../lib/notifications.js";
 import { timeZoneSchema } from "../lib/scheduling.js";
+import { rateLimit } from "../middleware/rateLimit.js";
 
 export const authRouter = Router();
 
 const BCRYPT_ROUNDS = 12;
+const loginLimit = rateLimit({
+  windowMs: 15 * 60_000, max: 10, message: "Too many sign-in attempts. Try again in a few minutes.",
+  key: (req) => `${req.ip}:${String(req.body?.email ?? "").toLowerCase()}`,
+});
+const registerLimit = rateLimit({ windowMs: 60 * 60_000, max: 10, message: "Too many registrations from this address. Try again later." });
+const verifyLimit = rateLimit({ windowMs: 60 * 60_000, max: 30 });
 const emailUnavailable = "Email verification is temporarily unavailable. Please try again later or contact the academy.";
 const registrationPassword = z.string().min(10).refine((value) => Buffer.byteLength(value, "utf8") <= 72);
 
@@ -109,9 +116,10 @@ const registerGuardianSchema = z.object({
   password: registrationPassword,
   fullName: z.string().trim().min(2).max(120),
   adult: z.boolean().optional(),
+  timeZone: timeZoneSchema.optional(),
 });
 
-authRouter.post("/register/:role(guardian|student)", asyncHandler(async (req, res) => {
+authRouter.post("/register/:role(guardian|student)", registerLimit, asyncHandler(async (req, res) => {
   if (!mailConfig()) return res.status(503).json({ error: emailUnavailable });
   const role = req.params.role === "student" ? "STUDENT" : "GUARDIAN";
   const parsed = registerGuardianSchema.safeParse(req.body);
@@ -121,7 +129,7 @@ authRouter.post("/register/:role(guardian|student)", asyncHandler(async (req, re
   if (role === "STUDENT" && parsed.data.adult !== true) {
     return res.status(400).json({ error: "Adult learners can register directly. For a minor, create a guardian account." });
   }
-  const { email, password, fullName } = parsed.data;
+  const { email, password, fullName, timeZone } = parsed.data;
 
   const academy = await getDefaultAcademy();
   if (!academy) {
@@ -135,7 +143,7 @@ authRouter.post("/register/:role(guardian|student)", asyncHandler(async (req, re
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   const account = await prisma.$transaction(async (tx) => {
     const acc = await tx.account.create({
-      data: { email: email.toLowerCase(), passwordHash, fullName },
+      data: { email: email.toLowerCase(), passwordHash, fullName, ...(timeZone ? { timeZone } : {}) },
     });
     await tx.academyMembership.create({
       data: { academyId: academy.id, accountId: acc.id, role },
@@ -159,9 +167,10 @@ const registerTutorSchema = tutorFields.extend({
   email: z.string().trim().email().max(254),
   password: registrationPassword,
   fullName: z.string().trim().min(2).max(120),
+  timeZone: timeZoneSchema.optional(),
 });
 
-authRouter.post("/register/tutor", asyncHandler(async (req, res) => {
+authRouter.post("/register/tutor", registerLimit, asyncHandler(async (req, res) => {
   if (!mailConfig()) return res.status(503).json({ error: emailUnavailable });
   const parsed = registerTutorSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -181,7 +190,7 @@ authRouter.post("/register/tutor", asyncHandler(async (req, res) => {
   const passwordHash = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
   const account = await prisma.$transaction(async (tx) => {
     const acc = await tx.account.create({
-      data: { email: data.email.toLowerCase(), passwordHash, fullName: data.fullName },
+      data: { email: data.email.toLowerCase(), passwordHash, fullName: data.fullName, ...(data.timeZone ? { timeZone: data.timeZone } : {}) },
     });
     await tx.academyMembership.create({
       data: { academyId: academy.id, accountId: acc.id, role: "TUTOR" },
@@ -214,7 +223,7 @@ authRouter.post("/register/tutor", asyncHandler(async (req, res) => {
   res.status(201).json({ verificationRequired: true });
 }));
 
-authRouter.post("/verify-email", asyncHandler(async (req, res) => {
+authRouter.post("/verify-email", verifyLimit, asyncHandler(async (req, res) => {
   const parsed = z.object({ token: z.string().max(150).regex(/^[a-f0-9-]+\.\d+\.[a-f0-9]{64}$/) }).safeParse(req.body);
   const invalid = () => res.status(400).json({ error: "This verification link is invalid or expired. Attempt to sign in to request a new one." });
   if (!parsed.success) return invalid();
@@ -238,7 +247,7 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-authRouter.post("/login", asyncHandler(async (req, res) => {
+authRouter.post("/login", loginLimit, asyncHandler(async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });

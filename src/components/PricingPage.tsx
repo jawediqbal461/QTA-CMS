@@ -3,167 +3,89 @@ import {
   CheckCircle, AlertCircle, Loader2, CreditCard, Clock, RefreshCw,
   Plus, ChevronDown, ChevronUp, DollarSign, User, Calendar, FileText,
 } from "lucide-react";
-import { accountRequest } from "../lib/api";
+import { Link } from "react-router-dom";
+import { accountRequest, request } from "../lib/api";
 import { useSEO } from "../hooks/useSEO";
 
 // ─── Public Pricing Page ────────────────────────────────────────────────────
 
-const PACKAGES = [
-  {
-    name: "Discovery Trial",
-    sessions: 2,
-    price: "Free",
-    highlight: true,
-    description: "Two complimentary sessions with a matched tutor — no commitment, no card required.",
-    features: [
-      "Personalised tutor matching",
-      "Quran recitation assessment",
-      "Tailored learning plan",
-      "Full cancellation flexibility",
-    ],
-  },
-  {
-    name: "Starter",
-    sessions: 8,
-    price: "$120",
-    perSession: "$15 / session",
-    description: "Perfect for families who want to establish a consistent weekly routine.",
-    features: [
-      "Dedicated tutor",
-      "Progress reports after every session",
-      "1 free reschedule per month",
-      "WhatsApp support",
-    ],
-  },
-  {
-    name: "Standard",
-    sessions: 16,
-    price: "$220",
-    perSession: "$13.75 / session",
-    description: "Our most popular plan — two sessions per week with deeper curriculum coverage.",
-    features: [
-      "Everything in Starter",
-      "Bi-weekly parent updates",
-      "2 free reschedules per month",
-      "Priority tutor matching",
-    ],
-    badge: "Most Popular",
-  },
-  {
-    name: "Intensive",
-    sessions: 24,
-    price: "$300",
-    perSession: "$12.50 / session",
-    description: "Three sessions per week for students preparing for exams or accelerating hifz.",
-    features: [
-      "Everything in Standard",
-      "Dedicated senior tutor",
-      "Unlimited reschedules",
-      "Monthly progress certificate",
-    ],
-  },
-];
-
 const FAQS = [
   {
-    q: "How does the trial work?",
-    a: "After submitting a learning request, our staff matches you with a suitable tutor within 48 hours. You attend two sessions at no cost. If you are happy, you choose a paid package — no payment is taken until you decide to continue.",
+    q: "How is the price of a lesson decided?",
+    a: "Each tutor sets their own hourly rate, shown on their profile and in the tutor directory. Lessons are 45 minutes long.",
   },
   {
-    q: "What is the cancellation policy?",
-    a: "You may cancel any unused sessions at any time. Starter and Standard plans allow one or two reschedules per month respectively; unused reschedules do not carry over. Intensive plans include unlimited reschedules.",
+    q: "How do I get matched with a tutor?",
+    a: "Browse the directory and book a time yourself, or submit a tutor request from the Guardian desk and the academy team will assign an approved tutor.",
   },
   {
     q: "How are payments processed?",
-    a: "During the pilot phase, payments are handled manually by our admin team — bank transfer, cash, or digital wallet — and confirmed in your portal once reconciled. Automated online checkout is on our roadmap.",
+    a: "Payments are currently handled by the academy team — bank transfer, cash, or digital wallet — and recorded in your desk under Payment History once confirmed. Automated online checkout is not available yet.",
   },
   {
-    q: "Can I switch plans mid-cycle?",
-    a: "Yes. Contact us and we will adjust your remaining sessions to the new plan rate, crediting any difference forward.",
-  },
-  {
-    q: "Is there a sibling discount?",
-    a: "Yes — enrol two or more siblings and receive a 10% discount on each additional enrolment. Mention this when submitting your request.",
+    q: "Can I cancel or reschedule a lesson?",
+    a: "Yes. From your desk you can cancel or reschedule any lesson up to the moment it starts, as long as the tutor has a free time that suits you.",
   },
 ];
+
+type RateRow = { hourlyRate: string };
 
 export default function PricingPage() {
   useSEO({
     title: "Pricing | Quran Tutors Academy",
-    description: "Transparent pricing for Quran and Arabic tutoring. Choose a package that fits your schedule and budget.",
+    description: "How lesson pricing works at Quran Tutors Academy: each tutor sets an hourly rate for 45-minute lessons.",
   });
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [rates, setRates] = useState<number[] | null>(null);
+
+  useEffect(() => {
+    request<RateRow[]>("/tutors").then(
+      (rows) => setRates(rows.map((row) => Number(row.hourlyRate)).filter((rate) => Number.isFinite(rate) && rate > 0)),
+      () => setRates([]),
+    );
+  }, []);
+
+  const summary = rates && rates.length
+    ? [
+        { label: "Lowest rate", value: Math.min(...rates) },
+        { label: "Average rate", value: rates.reduce((sum, rate) => sum + rate, 0) / rates.length },
+        { label: "Highest rate", value: Math.max(...rates) },
+      ]
+    : null;
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white">
-      {/* Hero */}
       <section className="pt-20 pb-12 px-4 text-center">
         <div className="inline-flex items-center space-x-2 bg-emerald-950/60 border border-emerald-500/20 rounded-full px-4 py-1.5 mb-6">
           <DollarSign size={13} className="text-emerald-400" />
-          <span className="text-xs font-semibold text-emerald-300 tracking-wide uppercase">Pilot Pricing</span>
+          <span className="text-xs font-semibold text-emerald-300 tracking-wide uppercase">Pricing</span>
         </div>
-        <h1 className="text-3xl sm:text-4xl font-extrabold mb-4 tracking-tight">
-          Simple, Transparent Pricing
-        </h1>
+        <h1 className="text-3xl sm:text-4xl font-extrabold mb-4 tracking-tight">Simple, Transparent Pricing</h1>
         <p className="text-neutral-400 max-w-xl mx-auto text-sm leading-relaxed">
-          Start with two free trial sessions — no card required. When you are ready, choose the plan that fits your
-          family's pace and budget.
+          There are no fixed packages. Every tutor sets an hourly rate for their 45-minute lessons, so you can choose the tutor that fits your budget.
         </p>
       </section>
 
-      {/* Packages */}
-      <section className="px-4 pb-16 max-w-5xl mx-auto">
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {PACKAGES.map((pkg) => (
-            <div
-              key={pkg.name}
-              className={`relative rounded-2xl border p-5 flex flex-col ${
-                pkg.highlight
-                  ? "bg-emerald-950/40 border-emerald-500/30"
-                  : pkg.badge
-                  ? "bg-sky-950/30 border-sky-500/30"
-                  : "bg-neutral-900/60 border-neutral-800"
-              }`}
-            >
-              {pkg.badge && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] font-extrabold bg-sky-500 text-neutral-950 px-3 py-0.5 rounded-full uppercase tracking-wider">
-                  {pkg.badge}
-                </span>
-              )}
-              <div className="mb-3">
-                <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-1">{pkg.name}</p>
-                <p className="text-3xl font-extrabold">{pkg.price}</p>
-                {pkg.perSession && <p className="text-xs text-neutral-500 mt-0.5">{pkg.perSession}</p>}
-                <p className="text-xs text-neutral-500 mt-1">{pkg.sessions} sessions</p>
-              </div>
-              <p className="text-xs text-neutral-400 leading-relaxed mb-4">{pkg.description}</p>
-              <ul className="space-y-1.5 mt-auto">
-                {pkg.features.map((f) => (
-                  <li key={f} className="flex items-start space-x-2 text-xs text-neutral-300">
-                    <CheckCircle size={12} className="text-emerald-400 mt-0.5 shrink-0" />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
+      <section className="px-4 pb-14 max-w-3xl mx-auto">
+        <div className="grid gap-4 sm:grid-cols-3">
+          {(summary ?? [{ label: "Lowest rate" }, { label: "Average rate" }, { label: "Highest rate" }]).map((card) => (
+            <div key={card.label} className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-5 text-center">
+              <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-1">{card.label}</p>
+              <p className="text-3xl font-extrabold">{"value" in card ? `$${card.value.toFixed(2)}` : "—"}</p>
+              <p className="text-xs text-neutral-500 mt-0.5">per hour</p>
             </div>
           ))}
         </div>
-      </section>
-
-      {/* Trial terms callout */}
-      <section className="px-4 pb-14 max-w-2xl mx-auto">
-        <div className="bg-neutral-900/70 border border-neutral-800 rounded-2xl p-6 text-center space-y-3">
-          <Clock size={20} className="text-amber-400 mx-auto" />
-          <h2 className="text-base font-bold">Trial Terms</h2>
-          <p className="text-xs text-neutral-400 leading-relaxed">
-            The two-session Discovery Trial is free for new families. Trials are non-transferable and limited to one per
-            household. If you cancel mid-trial, the remaining session lapses — it cannot be rescheduled to a different
-            tutor. After the trial, you are under no obligation to continue.
-          </p>
+        <p className="mt-4 text-center text-xs text-neutral-500">
+          {rates === null ? "Loading current rates…" : summary ? `Based on ${rates.length} listed tutor${rates.length === 1 ? "" : "s"}.` : "Rates appear here once tutors are listed."}
+        </p>
+        <div className="mt-6 text-center">
+          <Link to="/tutors" className="inline-flex items-center rounded-xl bg-emerald-500 px-5 py-2.5 text-xs font-bold text-neutral-950 transition hover:bg-emerald-400">
+            Compare tutors and rates
+          </Link>
         </div>
       </section>
 
-      {/* FAQ */}
       <section className="px-4 pb-20 max-w-2xl mx-auto">
         <h2 className="text-base font-bold text-center mb-6">Frequently Asked Questions</h2>
         <div className="space-y-2">

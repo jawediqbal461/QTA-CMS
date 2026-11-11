@@ -1,9 +1,9 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { FileText, ArrowRight, Search, Sparkles } from "lucide-react";
-import { BlogPost, INITIAL_BLOGS } from "../data/mockData";
 import Breadcrumbs from "./Breadcrumbs";
 import { useSEO } from "../hooks/useSEO";
+import { fetchPosts, formatDate, type PostSummary } from "../lib/content";
 
 export default function BlogsPage() {
   const navigate = useNavigate();
@@ -14,20 +14,15 @@ export default function BlogsPage() {
     schema: { "@type": "CollectionPage", name: "Academy Insights" }
   });
 
-  const [blogs] = useState<BlogPost[]>(() => {
-    try {
-      const saved = localStorage.getItem("qta_blogs");
-      return saved ? JSON.parse(saved) : INITIAL_BLOGS;
-    } catch {
-      return INITIAL_BLOGS;
-    }
-  });
+  const [published, setPublished] = useState<PostSummary[] | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    fetchPosts().then(setPublished, () => { setPublished([]); setError("Articles could not be loaded. Please try again."); });
+  }, []);
 
   const [searchQuery, setSearchQuery] = useState("");
 
-  const published = blogs.filter(b => b.status === "Published");
-
-  const filtered = published.filter(b =>
+  const filtered = (published ?? []).filter(b =>
     b.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     b.excerpt.toLowerCase().includes(searchQuery.toLowerCase()) ||
     b.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -85,7 +80,7 @@ export default function BlogsPage() {
                   <div className="flex items-center space-x-2 text-[10px] text-neutral-500">
                     <span className="font-bold text-emerald-400">{blog.author}</span>
                     <span>•</span>
-                    <span>{blog.publishedAt}</span>
+                    <span>{formatDate(blog.publishedAt)}</span>
                   </div>
                   <h3 className="text-sm font-bold text-white leading-snug line-clamp-2">{blog.title}</h3>
                   <p className="text-xs text-neutral-400 line-clamp-3 leading-relaxed">{blog.excerpt}</p>
@@ -114,7 +109,9 @@ export default function BlogsPage() {
       ) : (
         <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-12 text-center text-xs text-neutral-500 space-y-2">
           <FileText size={22} className="mx-auto text-neutral-600" />
-          <p>No articles match your search.</p>
+          {published === null ? <p role="status">Loading articles…</p> : error ? <p role="alert" className="text-rose-400">{error}</p>
+            : published.length === 0 ? <p>No articles have been published yet.</p> : <p>No articles match your search.</p>}
+          <Link to="/blog/" className="inline-block text-emerald-400 hover:text-emerald-300">Browse the archive of earlier articles</Link>
         </div>
       )}
     </div>

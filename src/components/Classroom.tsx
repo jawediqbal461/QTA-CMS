@@ -4,16 +4,11 @@ import {
   BookOpen, MessageSquare, Send, LogOut, AlertTriangle, Plus, ChevronLeft, ChevronRight, Loader2, Mic, MicOff, Video, VideoOff
 } from "lucide-react";
 import { accountRequest } from "../lib/api";
+import { getStoredSession } from "../lib/session";
 
 // --- Session helper ---
-function getSession(): { token: string; name: string; role: string } | null {
-  for (const r of ["tutor", "guardian", "student"]) {
-    try {
-      const raw = sessionStorage.getItem(`qta_session_${r}`);
-      if (raw) { const s = JSON.parse(raw); if (s?.token) return s; }
-    } catch { /* continue */ }
-  }
-  return null;
+function getSession() {
+  return getStoredSession(["tutor", "guardian", "student"]);
 }
 
 // --- Quran snippet data (inline — no mockData dependency) ---
@@ -130,8 +125,8 @@ export default function Classroom() {
 
   // Initialize Jitsi once script loaded + container ready
   useEffect(() => {
-    if (!jitsiLoaded || !jitsiContainerRef.current || jitsiApiRef.current) return;
-    const displayName = session?.name ?? "Guest";
+    if (!jitsiLoaded || bookingLoading || (!isDemo && !booking) || !jitsiContainerRef.current || jitsiApiRef.current) return;
+    const displayName = booking ? (booking.myRole === "TUTOR" ? booking.tutorName : booking.studentName) : "Guest";
     try {
       const api = new (window as any).JitsiMeetExternalAPI("meet.jit.si", {
         roomName,
@@ -159,7 +154,7 @@ export default function Classroom() {
       console.error("Jitsi init error:", err);
     }
     return () => { if (jitsiApiRef.current) { try { jitsiApiRef.current.dispose(); } catch { /* ignore */ } jitsiApiRef.current = null; } };
-  }, [jitsiLoaded, roomName]);
+  }, [jitsiLoaded, roomName, bookingLoading, booking]);
 
   // Poll chat messages
   const fetchMessages = useCallback(async () => {
@@ -213,6 +208,16 @@ export default function Classroom() {
   if (bookingLoading) return (
     <div className="flex items-center justify-center min-h-screen bg-neutral-950">
       <Loader2 size={32} className="text-emerald-400 animate-spin" />
+    </div>
+  );
+
+  if (!isDemo && !booking) return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-neutral-950 px-4 text-center text-white">
+      <AlertTriangle size={28} className="text-amber-400" />
+      <p className="text-sm font-bold">{session ? "You do not have access to this classroom." : "Sign in to join this classroom."}</p>
+      <button onClick={() => { if (session) navigate(-1); else navigate("/login/student"); }} className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-neutral-950">
+        {session ? "Go back" : "Sign in"}
+      </button>
     </div>
   );
 

@@ -1,30 +1,29 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { FileText, ArrowRight } from "lucide-react";
-import { BlogPost, INITIAL_BLOGS } from "../data/mockData";
 import Breadcrumbs from "./Breadcrumbs";
+import Markdown from "./Markdown";
 import { useSEO } from "../hooks/useSEO";
+import { fetchPost, fetchPosts, formatDate, type PostDetail, type PostSummary } from "../lib/content";
 
 export default function BlogPostPage() {
   const navigate = useNavigate();
   const { slug } = useParams<{ slug: string }>();
+  const [post, setPost] = useState<PostDetail | null | undefined>(undefined);
+  const [others, setOthers] = useState<PostSummary[]>([]);
 
-  const [blogs] = useState<BlogPost[]>(() => {
-    try {
-      const saved = localStorage.getItem("qta_blogs");
-      return saved ? JSON.parse(saved) : INITIAL_BLOGS;
-    } catch {
-      return INITIAL_BLOGS;
-    }
-  });
-
-  const post = blogs.find(b => b.slug === slug && b.status === "Published");
+  useEffect(() => {
+    if (!slug) return;
+    setPost(undefined);
+    fetchPost(slug).then(setPost, () => setPost(null));
+    fetchPosts().then(setOthers, () => setOthers([]));
+  }, [slug]);
 
   useSEO({
-    title: post ? (post.seoTitle || post.title) : "Article Not Found",
+    title: post ? (post.seoTitle || post.title) : post === null ? "Article Not Found" : "Loading article",
     description: post ? (post.seoDescription || post.excerpt) : undefined,
     image: post ? (post.seoImage || post.coverImage) : undefined,
-    noindex: !post,
+    noindex: post === null,
     schema: post ? {
       "@type": "BlogPosting",
       headline: post.title,
@@ -35,6 +34,10 @@ export default function BlogPostPage() {
       keywords: post.tags.join(", ")
     } : undefined
   });
+
+  if (post === undefined) {
+    return <p role="status" className="py-24 text-center text-sm text-neutral-500">Loading article…</p>;
+  }
 
   if (!post) {
     return (
@@ -58,7 +61,7 @@ export default function BlogPostPage() {
     { label: post.title }
   ];
 
-  const related = blogs.filter(b => b.status === "Published" && b.id !== post.id).slice(0, 2);
+  const related = others.filter(b => b.id !== post.id).slice(0, 2);
 
   return (
     <div className="max-w-3xl mx-auto px-4 md:px-6 py-6 space-y-6 text-neutral-200">
@@ -75,7 +78,7 @@ export default function BlogPostPage() {
                 {post.author}
               </span>
               <span>•</span>
-              <span>Published on {post.publishedAt}</span>
+              <span>Published on {formatDate(post.publishedAt)}</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-black text-white leading-snug">{post.title}</h1>
             <div className="flex flex-wrap gap-1.5">
@@ -87,14 +90,12 @@ export default function BlogPostPage() {
             </div>
           </div>
 
-          <div className="text-sm text-neutral-300 space-y-4 leading-relaxed whitespace-pre-line prose prose-invert font-sans">
-            {post.content}
-          </div>
+          <Markdown source={post.content} className="text-sm text-neutral-300" />
 
           <div className="bg-neutral-950 border border-neutral-850/80 p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
               <p className="text-xs font-bold text-white">Ready to start learning?</p>
-              <p className="text-[11px] text-neutral-500">Browse our certified scholars and book a trial lesson.</p>
+              <p className="text-[11px] text-neutral-500">Browse our approved tutors and book a lesson.</p>
             </div>
             <button
               onClick={() => navigate("/tutors")}

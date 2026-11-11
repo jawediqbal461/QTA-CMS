@@ -14,11 +14,14 @@ import { reviewsRouter } from "./routes/reviews.js";
 import { messagesRouter } from "./routes/messages.js";
 import { classroomRouter } from "./routes/classroom.js";
 import { quizRouter } from "./routes/quiz.js";
+import { contentAdminRouter, contentPublicRouter } from "./routes/content.js";
 import { mailConfig, startNotificationWorker } from "./lib/notifications.js";
 import { prisma } from "./lib/prisma.js";
 import { asyncHandler } from "./lib/asyncHandler.js";
 
 const app = express();
+// Nginx terminates TLS in front of this process; trust its X-Forwarded-For for req.ip.
+app.set("trust proxy", 1);
 
 const allowedOrigins = (process.env.CORS_ORIGIN || "")
   .split(",")
@@ -52,7 +55,9 @@ app.get("/api/health/email", (_req, res) => {
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/admin/content", contentAdminRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api", contentPublicRouter);
 app.use("/api/tutor", tutorRouter);
 app.use("/api/guardian", guardianRouter);
 app.use("/api/tutors", directoryRouter);

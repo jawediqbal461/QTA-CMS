@@ -15,11 +15,11 @@ classroomRouter.get("/demo", asyncHandler(async (_req, res) => {
 
 // GET /api/classroom/:bookingId — authenticated, returns booking info for classroom
 classroomRouter.get("/:bookingId", requireAuth, asyncHandler(async (req, res) => {
-  const { accountId, role } = req.session!;
+  const { accountId, academyId, role } = req.session!;
   const { bookingId } = req.params;
 
-  const booking = await prisma.booking.findUnique({
-    where: { id: bookingId },
+  const booking = await prisma.booking.findFirst({
+    where: { id: bookingId, academyId },
     select: {
       id: true,
       scheduledAtUtc: true,
@@ -32,10 +32,12 @@ classroomRouter.get("/:bookingId", requireAuth, asyncHandler(async (req, res) =>
 
   if (!booking) return res.status(404).json({ error: "Booking not found." });
 
-  // Only tutor or student of this booking may access
+  // Only the tutor, the student, or a guardian linked to the student may access.
   const isTutor = booking.tutor.accountId === accountId;
   const isStudent = booking.student.id === accountId;
-  if (!isTutor && !isStudent && role !== "ACADEMY_ADMIN") {
+  const isGuardian = !isTutor && !isStudent && role === "GUARDIAN" &&
+    !!(await prisma.guardianStudentLink.findFirst({ where: { guardianId: accountId, studentId: booking.student.id } }));
+  if (!isTutor && !isStudent && !isGuardian && role !== "ACADEMY_ADMIN" && role !== "PLATFORM_ADMIN") {
     return res.status(403).json({ error: "Access denied." });
   }
 

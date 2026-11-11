@@ -677,7 +677,8 @@ adminRouter.get("/overview", asyncHandler(async (req, res) => {
     programDistribution: learningRequests.map((lr) => ({ program: lr.program, count: lr._count._all })),
     counts: {
       tutors: membersObj["TUTOR"] ?? 0,
-      students: membersObj["GUARDIAN"] ?? 0,
+      students: membersObj["STUDENT"] ?? 0,
+      guardians: membersObj["GUARDIAN"] ?? 0,
       totalMembers: memberCounts.reduce((s, m) => s + m._count._all, 0),
       activeCurriculums,
     },
@@ -724,4 +725,48 @@ adminRouter.patch("/tutors/:id/bio", asyncHandler(async (req, res) => {
   const result = await prisma.tutorProfile.updateMany({ where: { accountId: req.params.id, academyId }, data: parsed.data });
   if (!result.count) return res.status(404).json({ error: "Tutor not found." });
   res.json({ saved: true });
+}));
+
+// Course enrollments
+const adminEnrollmentSelect = {
+  id: true, status: true, notes: true, createdAt: true, updatedAt: true,
+  course: { select: { id: true, title: true, program: true, level: true, priceAmount: true, priceCurrency: true,
+    tutor: { select: { account: { select: { fullName: true } } } } } },
+  student: { select: { id: true, fullName: true } },
+  enrolledBy: { select: { id: true, fullName: true, email: true } },
+} as const;
+
+adminRouter.get("/enrollments", asyncHandler(async (req, res) => {
+  res.json(await prisma.courseEnrollment.findMany({
+    where: { academyId: req.session!.academyId },
+    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+    take: 300,
+    select: adminEnrollmentSelect,
+  }));
+}));
+
+adminRouter.patch("/enrollments/:id", asyncHandler(async (req, res) => {
+  const parsed = z.object({ status: z.enum(["CONFIRMED", "CANCELLED"]) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Choose confirm or cancel." });
+  const { academyId, accountId } = req.session!;
+  const outcome = await prisma.$transaction(async (tx) => {
+    const enrollment = await tx.courseEnrollment.findFirst({
+      where: { id: req.params.id, academyId }, select: { id: true, enrolledById: true, course: { select: { title: true } } },
+    });
+    if (!enrollment) return null;
+    const saved = await tx.courseEnrollment.update({ where: { id: enrollment.id }, data: { status: parsed.data.status }, select: adminEnrollmentSelect });
+    await tx.portalNotification.create({
+      data: {
+        accountId: enrollment.enrolledById, academyId, kind: "ENROLLMENT",
+        title: `Course enrollment ${parsed.data.status === "CONFIRMED" ? "confirmed" : "cancelled"}`,
+        message: `Your enrollment in "${enrollment.course.title}" was ${parsed.data.status === "CONFIRMED" ? "confirmed" : "cancelled"} by the academy.`,
+      },
+    });
+    await tx.auditEvent.create({
+      data: { actorId: accountId, academyId, action: `enrollment.${parsed.data.status.toLowerCase()}`, targetType: "course_enrollment", targetId: enrollment.id },
+    });
+    return saved;
+  });
+  if (!outcome) return res.status(404).json({ error: "Enrollment not found." });
+  res.json(outcome);
 }));

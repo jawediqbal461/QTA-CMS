@@ -15,7 +15,7 @@ export interface SEOOptions {
 
 const SITE_NAME = "Quran Tutors Academy";
 const DEFAULT_DESCRIPTION =
-  "Learn the Holy Quran online with certified Tajweed tutors — live lessons, Hifz memorization tracking, and a free Quran reading & audio companion.";
+  "Learn the Holy Quran online with approved Tajweed tutors — live lessons, Hifz memorization tracking, and a free Quran reading & audio companion.";
 
 function upsertMeta(attr: "name" | "property", key: string, content: string) {
   let el = document.head.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
@@ -62,8 +62,10 @@ export function useSEO(options: SEOOptions) {
   const schemaKey = options.schema ? JSON.stringify(options.schema) : "";
 
   useEffect(() => {
+    // Canonical/OG URLs ignore the query string so filtered or tracked views do not become duplicates.
     const pageUrl = new URL(window.location.href);
     pageUrl.hash = "";
+    pageUrl.search = "";
     const fullTitle = options.title.includes(SITE_NAME) ? options.title : `${options.title} | ${SITE_NAME}`;
     document.title = fullTitle;
 

@@ -275,13 +275,13 @@ guardianRouter.get("/payments", asyncHandler(async (req, res) => {
 }));
 
 // Student progress history — M11
-guardianRouter.get("/students/:studentId/progress", requireRole("GUARDIAN"), asyncHandler(async (req, res) => {
-  const { accountId, academyId } = req.session!;
-  // Verify this guardian is linked to the student
-  const link = await prisma.guardianStudentLink.findFirst({
-    where: { guardianId: accountId, studentId: req.params.studentId },
-  });
-  if (!link) return res.status(403).json({ error: "Not linked to this student." });
+guardianRouter.get("/students/:studentId/progress", asyncHandler(async (req, res) => {
+  const { accountId, academyId, role } = req.session!;
+  // A student reads their own progress; a guardian must be linked to the student.
+  const allowed = role === "STUDENT"
+    ? req.params.studentId === accountId
+    : !!(await prisma.guardianStudentLink.findFirst({ where: { guardianId: accountId, studentId: req.params.studentId } }));
+  if (!allowed) return res.status(403).json({ error: "Not linked to this student." });
   const entries = await prisma.progressEntry.findMany({
     where: { studentId: req.params.studentId, booking: { academyId } },
     orderBy: { recordedAt: "desc" },
@@ -294,4 +294,51 @@ guardianRouter.get("/students/:studentId/progress", requireRole("GUARDIAN"), asy
     },
   });
   res.json(entries);
+}));
+
+// Course enrollments
+const enrollmentSelect = {
+  id: true, status: true, notes: true, createdAt: true,
+  course: { select: { id: true, title: true, program: true, level: true, priceAmount: true, priceCurrency: true, tutor: { select: { account: { select: { fullName: true } } } } } },
+  student: { select: { id: true, fullName: true } },
+} as const;
+
+guardianRouter.get("/enrollments", asyncHandler(async (req, res) => {
+  const { accountId, academyId } = req.session!;
+  res.json(await prisma.courseEnrollment.findMany({
+    where: { academyId, enrolledById: accountId },
+    orderBy: { createdAt: "desc" },
+    select: enrollmentSelect,
+  }));
+}));
+
+const enrollSchema = z.object({ courseId: z.uuid(), studentId: z.uuid() });
+
+guardianRouter.post("/enrollments", asyncHandler(async (req, res) => {
+  const parsed = enrollSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Choose a course and a learner." });
+  const { accountId, academyId, role } = req.session!;
+  const { courseId, studentId } = parsed.data;
+  const student = await prisma.account.findFirst({ where: { AND: [{ id: studentId }, linkedStudent(accountId, academyId, role)] }, select: { id: true } });
+  if (!student) return res.status(404).json({ error: "Learner not found." });
+  const course = await prisma.course.findFirst({ where: { id: courseId, academyId, status: "PUBLISHED" }, select: { id: true } });
+  if (!course) return res.status(404).json({ error: "This course is not open for enrollment." });
+  const existing = await prisma.courseEnrollment.findUnique({ where: { courseId_studentId: { courseId, studentId } } });
+  if (existing && existing.status !== "CANCELLED") {
+    return res.status(409).json({ error: "This learner is already enrolled in the course." });
+  }
+  const enrollment = existing
+    ? await prisma.courseEnrollment.update({ where: { id: existing.id }, data: { status: "PENDING", enrolledById: accountId }, select: enrollmentSelect })
+    : await prisma.courseEnrollment.create({ data: { academyId, courseId, studentId, enrolledById: accountId }, select: enrollmentSelect });
+  res.status(201).json(enrollment);
+}));
+
+guardianRouter.patch("/enrollments/:id/cancel", asyncHandler(async (req, res) => {
+  const { accountId, academyId } = req.session!;
+  const updated = await prisma.courseEnrollment.updateMany({
+    where: { id: req.params.id, academyId, enrolledById: accountId, status: { in: ["PENDING", "CONFIRMED"] } },
+    data: { status: "CANCELLED" },
+  });
+  if (!updated.count) return res.status(404).json({ error: "Active enrollment not found." });
+  res.json({ status: "CANCELLED" });
 }));
