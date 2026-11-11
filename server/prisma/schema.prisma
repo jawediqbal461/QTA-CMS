@@ -120,6 +120,9 @@ model Account {
   payerPayments    PilotPayment[]    @relation("PayerPayments")
   confirmerPayments PilotPayment[]   @relation("ConfirmerPayments")
   reviewedCourses  Course[]          @relation("CourseReviewer")
+  reviewsAuthored  TutorReview[]     @relation("ReviewsAuthored")
+  messagesSent     Message[]         @relation("MessagesSent")
+  messagesReceived Message[]         @relation("MessagesReceived")
 
   @@map("accounts")
 }
@@ -192,6 +195,7 @@ model TutorProfile {
   bookings          Booking[]          @relation("TutorBookings")
   assignments       LearningRequest[]  @relation("TutorAssignments")
   courses           Course[]           @relation("TutorCourses")
+  reviews           TutorReview[]
 
   @@map("tutor_profiles")
 }
@@ -406,6 +410,37 @@ model CourseModule {
 
   @@index([courseId, position])
   @@map("course_modules")
+}
+
+model TutorReview {
+  id        String       @id @default(uuid())
+  tutorId   String
+  tutor     TutorProfile @relation(fields: [tutorId], references: [accountId], onDelete: Cascade)
+  authorId  String
+  author    Account      @relation("ReviewsAuthored", fields: [authorId], references: [id], onDelete: Cascade)
+  rating    Int
+  comment   String?
+  createdAt DateTime     @default(now())
+
+  @@unique([tutorId, authorId])
+  @@index([tutorId, createdAt])
+  @@map("tutor_reviews")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  academyId String
+  fromId    String
+  from      Account  @relation("MessagesSent", fields: [fromId], references: [id], onDelete: Cascade)
+  toId      String
+  to        Account  @relation("MessagesReceived", fields: [toId], references: [id], onDelete: Cascade)
+  body      String
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([academyId, fromId, createdAt])
+  @@index([academyId, toId, createdAt])
+  @@map("messages")
 }
 
 model LearningRequest {

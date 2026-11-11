@@ -40,6 +40,24 @@ export async function notifyBooking(tx: Prisma.TransactionClient, booking: Booki
   ] });
 }
 
+export async function notifyPayment(
+  tx: Prisma.TransactionClient,
+  academyId: string,
+  payerId: string,
+  amount: string,
+  currency: string,
+  action: "confirmed" | "refunded",
+) {
+  await tx.portalNotification.create({
+    data: {
+      accountId: payerId, academyId,
+      kind: "PAYMENT",
+      title: `Payment ${action}`,
+      message: `Your payment of ${amount} ${currency} has been ${action}. Open your desk for details.`,
+    },
+  });
+}
+
 // SMTP, not a transactional-email API — works with any mailbox (Hestia's
 // own mail server, Gmail, a hosting provider's SMTP, etc.).
 export function mailConfig() {

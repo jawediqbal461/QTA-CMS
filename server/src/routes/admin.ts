@@ -5,7 +5,7 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { activeStatuses, MINUTE, timeZoneSchema } from "../lib/scheduling.js";
 import { tutorFields } from "../lib/tutorProfile.js";
-import { notifyBooking } from "../lib/notifications.js";
+import { notifyBooking, notifyPayment } from "../lib/notifications.js";
 
 export const adminRouter = Router();
 
@@ -410,6 +410,7 @@ adminRouter.patch("/payments/:id/confirm", asyncHandler(async (req, res) => {
         targetType: "pilot_payment", targetId: p.id,
       },
     });
+    await notifyPayment(tx, academyId, p.payerId, p.amount.toString(), p.currency, "confirmed");
     return p;
   });
   res.json(updated);
@@ -436,6 +437,7 @@ adminRouter.patch("/payments/:id/refund", asyncHandler(async (req, res) => {
         targetType: "pilot_payment", targetId: p.id,
       },
     });
+    await notifyPayment(tx, academyId, p.payerId, p.amount.toString(), p.currency, "refunded");
     return p;
   });
   res.json(updated);

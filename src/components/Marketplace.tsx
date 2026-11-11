@@ -2,7 +2,7 @@ import { createElement, useEffect, useState, type ReactNode } from "react";
 import {
   ArrowLeft, GraduationCap, LogIn, UserPlus, Users, Sparkles, Star, Clock, Bell,
   CalendarCheck, ChevronRight, LogOut, ShieldCheck, Search, BookOpen, Wallet,
-  Award, Filter, RotateCcw, Check as CheckIcon, Globe, CheckCircle, Inbox,
+  Award, Filter, RotateCcw, Check as CheckIcon, Globe, CheckCircle, Inbox, MessageSquare, Send,
 } from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { accountRequest, ApiError, request } from "../lib/api";
@@ -502,7 +502,7 @@ function AccountForm({ role, register, onSession }: { role: Role; register: bool
   </form>;
 }
 
-type DeskTab = "overview" | "lessons" | "assignments" | "requests" | "profile" | "notifications" | "courses" | "payments" | "progress";
+type DeskTab = "overview" | "lessons" | "assignments" | "requests" | "profile" | "notifications" | "courses" | "payments" | "progress" | "calendar" | "messages";
 
 function DeskSidebar({ role, fullName, email, activeTab, setActiveTab, unread, signOut }: {
   role: Role; fullName: string; email: string; activeTab: DeskTab; setActiveTab: (tab: DeskTab) => void;
@@ -516,6 +516,8 @@ function DeskSidebar({ role, fullName, email, activeTab, setActiveTab, unread, s
     ...(role === "GUARDIAN" ? [{ id: "requests" as DeskTab, label: "Tutor Requests", icon: Inbox }] : []),
     ...(role === "GUARDIAN" ? [{ id: "payments" as DeskTab, label: "Payment History", icon: Wallet }] : []),
     ...(role === "GUARDIAN" ? [{ id: "progress" as DeskTab, label: "Progress Reports", icon: Award }] : []),
+    { id: "calendar" as DeskTab, label: "Calendar", icon: CalendarCheck },
+    { id: "messages" as DeskTab, label: "Messages", icon: MessageSquare },
     { id: "profile", label: "My profile", icon: Users },
     { id: "notifications", label: "Notifications", icon: Bell, count: unread },
   ];
@@ -687,10 +689,184 @@ export function AccountPortal({ role, register = false, login = false }: { role:
               <GuardianProgress token={token} />
             </div>
           )}
+          <div className={activeTab === "calendar" ? "" : "hidden"}>
+            <CalendarView token={token} role={role} />
+          </div>
+          <div className={activeTab === "messages" ? "" : "hidden"}>
+            <MessagesPanel token={token} active={activeTab === "messages"} />
+          </div>
         </div>
       </div>
     )}
   </section>;
+}
+
+type UpcomingBooking = {
+  id: string; scheduledAtUtc: string; durationMinutes: number; status: string;
+  tutor?: { account?: { fullName?: string } };
+  student?: { account?: { fullName?: string } };
+};
+
+function CalendarView({ token, role }: { token: string; role: Role }) {
+  const [bookings, setBookings] = useState<UpcomingBooking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const path = role === "TUTOR" ? "/tutor/bookings" : "/student/bookings";
+
+  useEffect(() => {
+    accountRequest(path, token)
+      .then((data: UpcomingBooking[]) => {
+        const now = Date.now();
+        const upcoming = (data || [])
+          .filter(b => b.status === "CONFIRMED" && new Date(b.scheduledAtUtc).getTime() > now)
+          .sort((a, b) => new Date(a.scheduledAtUtc).getTime() - new Date(b.scheduledAtUtc).getTime())
+          .slice(0, 20);
+        setBookings(upcoming);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [token]);
+
+  const grouped: Record<string, UpcomingBooking[]> = {};
+  for (const b of bookings) {
+    const day = new Date(b.scheduledAtUtc).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    (grouped[day] ??= []).push(b);
+  }
+
+  return <div className={`${panel} space-y-4`}>
+    <h2 className="text-sm font-bold text-white flex items-center gap-2"><CalendarCheck size={15} className="text-emerald-400" /> Upcoming Lessons</h2>
+    {loading ? <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-neutral-800 border-t-emerald-400 rounded-full animate-spin" /></div>
+      : Object.keys(grouped).length === 0
+        ? <p className="text-neutral-500 text-sm py-6 text-center">No upcoming confirmed lessons.</p>
+        : Object.entries(grouped).map(([day, items]) => (
+          <div key={day}>
+            <p className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400 mb-2">{day}</p>
+            <div className="space-y-2">
+              {items.map(b => {
+                const start = new Date(b.scheduledAtUtc);
+                const end = new Date(start.getTime() + b.durationMinutes * 60000);
+                const fmt = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                const other = role === "TUTOR"
+                  ? b.student?.account?.fullName ?? "Student"
+                  : b.tutor?.account?.fullName ?? "Tutor";
+                return <div key={b.id} className="flex items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-white">{fmt(start)} – {fmt(end)}</p>
+                    <p className="text-xs text-neutral-400">{other} · {b.durationMinutes} min</p>
+                  </div>
+                  <span className="rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold px-2 py-0.5">Confirmed</span>
+                </div>;
+              })}
+            </div>
+          </div>
+        ))}
+  </div>;
+}
+
+type Thread = { with: { id: string; fullName: string; role: string }; lastMessage: string; lastAt: string; unread: number };
+type Msg = { id: string; fromId: string; body: string; createdAt: string; readAt: string | null };
+
+function MessagesPanel({ token, active }: { token: string; active: boolean }) {
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [selectedName, setSelectedName] = useState("");
+  const [messages, setMessages] = useState<Msg[]>([]);
+  const [body, setBody] = useState("");
+  const [sending, setSending] = useState(false);
+  const [myId, setMyId] = useState("");
+
+  const loadThreads = () => {
+    accountRequest("/messages/threads", token)
+      .then((data: Thread[]) => setThreads(data || []))
+      .catch(() => {});
+  };
+
+  const loadConversation = (withId: string) => {
+    accountRequest(`/messages?with=${withId}`, token)
+      .then((data: { messages: Msg[]; myId: string }) => {
+        setMessages(data.messages || []);
+        setMyId(data.myId || "");
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    if (!active) return;
+    loadThreads();
+    const tid = setInterval(loadThreads, 5000);
+    return () => clearInterval(tid);
+  }, [active, token]);
+
+  useEffect(() => {
+    if (!selected || !active) return;
+    loadConversation(selected);
+    const tid = setInterval(() => loadConversation(selected), 5000);
+    return () => clearInterval(tid);
+  }, [selected, active, token]);
+
+  const send = async () => {
+    if (!body.trim() || !selected) return;
+    setSending(true);
+    try {
+      await accountRequest("/messages", token, "POST", { toId: selected, body: body.trim() });
+      setBody("");
+      loadConversation(selected);
+      loadThreads();
+    } catch {
+      /* ignore */
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (selected) return <div className={`${panel} space-y-4`}>
+    <div className="flex items-center gap-3">
+      <button type="button" onClick={() => setSelected(null)} className="text-xs text-neutral-400 hover:text-white transition font-bold">← Back</button>
+      <h2 className="text-sm font-bold text-white flex-1">{selectedName}</h2>
+    </div>
+    <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+      {messages.length === 0
+        ? <p className="text-neutral-500 text-sm text-center py-6">No messages yet. Say hello!</p>
+        : messages.map(m => {
+          const mine = m.fromId === myId;
+          return <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-xs rounded-2xl px-4 py-2.5 text-sm ${mine ? "bg-emerald-600 text-white" : "bg-neutral-800 text-neutral-100"}`}>
+              <p>{m.body}</p>
+              <p className={`text-[10px] mt-1 ${mine ? "text-emerald-200" : "text-neutral-500"}`}>
+                {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </p>
+            </div>
+          </div>;
+        })}
+    </div>
+    <div className="flex gap-2">
+      <input value={body} onChange={e => setBody(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
+        placeholder="Type a message…" className="flex-1 rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder-neutral-500 focus:border-emerald-500 focus:outline-none" />
+      <button type="button" onClick={() => void send()} disabled={sending || !body.trim()}
+        className="flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 px-4 py-2 text-xs font-bold text-neutral-950 transition">
+        <Send size={12} /> Send
+      </button>
+    </div>
+  </div>;
+
+  return <div className={`${panel} space-y-4`}>
+    <h2 className="text-sm font-bold text-white flex items-center gap-2"><MessageSquare size={15} className="text-emerald-400" /> Messages</h2>
+    {threads.length === 0
+      ? <p className="text-neutral-500 text-sm text-center py-6">No conversations yet.</p>
+      : threads.map(t => (
+        <button key={t.with.id} type="button"
+          onClick={() => { setSelected(t.with.id); setSelectedName(t.with.fullName); }}
+          className="flex w-full items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900 hover:border-emerald-500/30 px-4 py-3 text-left transition">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-950 text-xs font-black text-emerald-400">
+            {t.with.fullName.charAt(0).toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-white">{t.with.fullName}</p>
+            <p className="truncate text-xs text-neutral-400">{t.lastMessage}</p>
+          </div>
+          {t.unread > 0 && <span className="rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-extrabold text-neutral-950">{t.unread}</span>}
+        </button>
+      ))}
+  </div>;
 }
 
 export function VerifyEmail() {

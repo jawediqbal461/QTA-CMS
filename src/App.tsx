@@ -22,6 +22,8 @@ import { AccountPortal, PublicTutors, VerifyEmail } from "./components/Marketpla
 const Classroom = lazy(() => import("./components/Classroom"));
 const AdminCMS = lazy(() => import("./components/AdminCMS"));
 const AdminLogin = lazy(() => import("./components/AdminLogin"));
+const TutorPublicPage = lazy(() => import("./components/TutorPublicPage"));
+const CertificatePage = lazy(() => import("./components/CertificatePage"));
 const LegacyQuran = lazy(() => import("./components/LegacyQuran"));
 const ResourcesPage = lazy(() => import("./components/ResourcesPage"));
 const PricingPage = lazy(() => import("./components/PricingPage"));
@@ -856,7 +858,7 @@ export default function App() {
             } />
 
             <Route path="/tutors" element={<PublicTutors />} />
-            <Route path="/tutors/:slug" element={<PublicTutors />} />
+            <Route path="/tutors/:slug" element={<TutorPublicPage />} />
 
             {/* Academy Insights — blog listing and individual real, SEO-friendly article URLs */}
             <Route path="/blogs" element={<BlogsPage />} />
@@ -982,6 +984,7 @@ export default function App() {
               )
             } />
 
+            <Route path="/certificate" element={<CertificatePage />} />
             <Route path="/resources" element={<ResourcesPage />} />
             <Route path="/pricing" element={<PricingPage />} />
             <Route path="/courses" element={<CoursesPage />} />

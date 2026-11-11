@@ -5,6 +5,7 @@ import {
   RefreshCw, Send, Eye, EyeOff, XCircle,
 } from "lucide-react";
 import { request, accountRequest } from "../lib/api";
+import { useSEO } from "../hooks/useSEO";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -61,6 +62,10 @@ function StatusBadge({ status }: { status: CourseStatus }) {
 // ─── Public Courses Page ──────────────────────────────────────────────────────
 
 export default function CoursesPage() {
+  useSEO({
+    title: "Courses | Quran Tutors Academy",
+    description: "Browse our structured Quran and Arabic courses — Tajweed, Hifz, Quranic Arabic, and more.",
+  });
   const [courses, setCourses] = useState<PublicCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

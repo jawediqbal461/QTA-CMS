@@ -4,6 +4,7 @@ import {
   Plus, ChevronDown, ChevronUp, DollarSign, User, Calendar, FileText,
 } from "lucide-react";
 import { accountRequest } from "../lib/api";
+import { useSEO } from "../hooks/useSEO";
 
 // ─── Public Pricing Page ────────────────────────────────────────────────────
 
@@ -87,6 +88,10 @@ const FAQS = [
 ];
 
 export default function PricingPage() {
+  useSEO({
+    title: "Pricing | Quran Tutors Academy",
+    description: "Transparent pricing for Quran and Arabic tutoring. Choose a package that fits your schedule and budget.",
+  });
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   return (
