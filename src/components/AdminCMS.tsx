@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Database, Cpu, Code2, Layers, BookOpen, UserPlus, Sliders, CheckCircle,
   Copy, Check, FileText, Globe, Zap, AlertCircle, Trash2, ArrowUpRight, HelpCircle,
@@ -48,6 +48,17 @@ export default function AdminCMS({
     initialSubTab || "accounts"
   );
   
+  // After switching tabs, make sure the panel is on screen (the sidebar can be taller than the window).
+  const contentRef = useRef<HTMLDivElement>(null);
+  const firstTabRender = useRef(true);
+  useEffect(() => {
+    if (firstTabRender.current) { firstTabRender.current = false; return; }
+    const element = contentRef.current;
+    if (element && (window.innerWidth < 1024 || element.getBoundingClientRect().top < 0)) {
+      element.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+  }, [activeSubTab]);
+
   // Interactive Overview States
   const [hoveredMonth, setHoveredMonth] = useState<string | null>(null);
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
@@ -902,7 +913,7 @@ export default function AdminCMS({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* SIDEBAR NAVIGATION */}
-        <aside className="lg:col-span-3 bg-neutral-900/95 border border-neutral-800 rounded-3xl p-5 space-y-6 shadow-xl lg:sticky lg:top-6">
+        <aside className="lg:col-span-3 bg-neutral-900/95 border border-neutral-800 rounded-3xl p-5 space-y-6 shadow-xl lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
           
           <div className="space-y-1.5 pb-2 border-b border-neutral-800">
             <h2 className="text-xs font-black uppercase tracking-widest text-amber-500 font-mono">
@@ -1209,7 +1220,7 @@ export default function AdminCMS({
         </aside>
 
         {/* RIGHT COLUMN: MAIN CONTENT PANEL */}
-        <div className="lg:col-span-9 space-y-6">
+        <div ref={contentRef} className="lg:col-span-9 space-y-6 scroll-mt-24">
 
         {/* SUB-TAB 0: PLATFORM OVERVIEW & OPERATIONAL METRICS */}
         {activeSubTab === "overview" && (
@@ -1222,8 +1233,8 @@ export default function AdminCMS({
               <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 space-y-3 relative overflow-hidden group hover:border-neutral-750 transition duration-300 shadow-md">
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
-                    <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">Active Students</span>
-                    <h3 className="text-2xl font-extrabold text-white">248</h3>
+                    <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">Total Members</span>
+                    <h3 className="text-2xl font-extrabold text-white">{overviewData?.counts.totalMembers ?? (overviewLoading ? "…" : "—")}</h3>
                   </div>
                   <div className="p-2 bg-emerald-950/60 border border-emerald-500/20 text-emerald-400 rounded-xl">
                     <Users size={16} />
@@ -1232,9 +1243,9 @@ export default function AdminCMS({
                 <div className="flex items-center space-x-2 text-xs">
                   <span className="text-emerald-400 font-bold flex items-center">
                     <TrendingUp size={12} className="mr-1" />
-                    +14.2%
+                    Live DB
                   </span>
-                  <span className="text-neutral-500">vs last month</span>
+                  <span className="text-neutral-500">Active academy members</span>
                 </div>
                 <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-transparent opacity-30" />
               </div>
@@ -3386,8 +3397,6 @@ export default function AdminCMS({
           </div>
         )}
 
-        </div>
-
         {/* SUB-TAB: ANALYTICS DASHBOARD */}
         {activeSubTab === "analytics" && (
           <div className="animate-fade-in">
@@ -3402,19 +3411,21 @@ export default function AdminCMS({
           </div>
         )}
 
-        {/* SUB-TAB: TAJWEED QUIZ RESULTS */}
+        {/* SUB-TAB: MESSAGES INBOX */}
         {activeSubTab === "inbox" && (
           <div className="animate-fade-in max-w-3xl">
             <MessagesPanel token={token} active />
           </div>
         )}
 
+        {/* SUB-TAB: TAJWEED QUIZ RESULTS */}
         {activeSubTab === "quiz_results" && (
           <div className="animate-fade-in">
             <QuizResultsPanel token={token} />
           </div>
         )}
 
+        </div>
       </div>
 
     </div>
