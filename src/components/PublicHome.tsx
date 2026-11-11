@@ -1,5 +1,6 @@
 import { FeaturedTutors } from "./Marketplace";
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { 
   BookOpen, Users, Calendar, Award, Star, CheckCircle, ArrowRight, Play, 
   BookOpenCheck, ChevronDown, ChevronRight, HelpCircle, AlertCircle, 
@@ -21,6 +22,8 @@ export default function PublicHome({ curriculums, onNavigateToPortal, onNavigate
     description: "Learn the Holy Quran online with certified Tajweed tutors — live interactive lessons, Hifz memorization tracking, and a free Quran reading & audio companion.",
     schema: { "@type": "EducationalOrganization", name: "Quran Tutors Academy" }
   });
+
+  const navigate = useNavigate();
 
   // States
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
@@ -137,10 +140,7 @@ export default function PublicHome({ curriculums, onNavigateToPortal, onNavigate
               </button>
               
               <button
-                onClick={() => {
-                  const target = document.getElementById("tajweed-quiz");
-                  target?.scrollIntoView({ behavior: "smooth" });
-                }}
+                onClick={() => navigate("/quiz/tajweed")}
                 className="bg-neutral-800 hover:bg-neutral-700 text-white font-bold px-6 py-3.5 rounded-xl text-sm border border-neutral-700 transition duration-200 flex items-center space-x-2"
               >
                 <span>Take Tajweed Skill Quiz</span>
@@ -222,23 +222,30 @@ export default function PublicHome({ curriculums, onNavigateToPortal, onNavigate
                 </div>
               </div>
 
-              {/* Portal Jumpers */}
+              {/* Portal links */}
               <div className="pt-2 border-t border-neutral-900 space-y-2">
-                <p className="text-[10px] text-neutral-500 text-center uppercase tracking-wider font-bold">Interactive Sandbox Quick Entrance</p>
+                <p className="text-[10px] text-neutral-500 text-center uppercase tracking-wider font-bold">Access Your Desk</p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => onNavigateToPortal("tutor")}
                     className="bg-emerald-600 hover:bg-emerald-500 text-neutral-950 text-xs font-bold py-2.5 px-3 rounded-lg shadow transition flex items-center justify-center space-x-1 cursor-pointer"
                   >
-                    <span>Tutor Dashboard</span>
+                    <span>Tutor Login</span>
                   </button>
                   <button
                     onClick={() => onNavigateToPortal("student")}
                     className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2.5 px-3 rounded-lg shadow transition flex items-center justify-center space-x-1 cursor-pointer"
                   >
-                    <span>Student Desk</span>
+                    <span>Student Login</span>
                   </button>
                 </div>
+                <button
+                  onClick={() => window.location.href = "/classroom/demo"}
+                  className="w-full bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white text-xs font-bold py-2 px-3 rounded-lg shadow transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                  Try Demo Classroom
+                </button>
               </div>
             </div>
           </div>

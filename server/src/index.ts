@@ -12,6 +12,8 @@ import { coursesRouter } from "./routes/courses.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { reviewsRouter } from "./routes/reviews.js";
 import { messagesRouter } from "./routes/messages.js";
+import { classroomRouter } from "./routes/classroom.js";
+import { quizRouter } from "./routes/quiz.js";
 import { mailConfig, startNotificationWorker } from "./lib/notifications.js";
 import { prisma } from "./lib/prisma.js";
 import { asyncHandler } from "./lib/asyncHandler.js";
@@ -59,6 +61,8 @@ app.use("/api/resources", resourcesRouter);
 app.use("/api/courses", coursesRouter);
 app.use("/api/tutors/:tutorId/reviews", reviewsRouter);
 app.use("/api/messages", messagesRouter);
+app.use("/api/classroom", classroomRouter);
+app.use("/api/quiz", quizRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });

@@ -20,6 +20,7 @@ import { clearStoredAdminToken, getStoredAdminToken } from "./lib/api";
 import PublicHome from "./components/PublicHome";
 import { AccountPortal, PublicTutors, VerifyEmail } from "./components/Marketplace";
 const Classroom = lazy(() => import("./components/Classroom"));
+const TajweedQuiz = lazy(() => import("./components/TajweedQuiz"));
 const AdminCMS = lazy(() => import("./components/AdminCMS"));
 const AdminLogin = lazy(() => import("./components/AdminLogin"));
 const TutorPublicPage = lazy(() => import("./components/TutorPublicPage"));
@@ -909,40 +910,11 @@ export default function App() {
               <AdminLogin onLoginSuccess={() => setIsAdminAuthenticated(true)} onBackToHome={() => navigate("/")} />
             )} />
 
-            {/* Live Classroom Simulator */}
-            <Route path="/classroom" element={
-              activeLessonInClassroom ? (
-                <Classroom
-                  lesson={activeLessonInClassroom}
-                  student={classroomStudent}
-                  tutor={classroomTutor}
-                  onExit={() => {
-                    setActiveLessonInClassroom(null);
-                    navigate("/tutor");
-                  }}
-                  onCompleteLesson={handleCompleteLessonInClassroom}
-                />
-              ) : (
-                <div className="max-w-md mx-auto mt-24 bg-neutral-900 border border-neutral-800 rounded-3xl p-8 text-center space-y-4">
-                  <div className="w-14 h-14 rounded-full bg-neutral-800 flex items-center justify-center text-emerald-400 mx-auto">
-                    <Play size={24} />
-                  </div>
-                  <h2 className="text-lg font-bold text-white">Classroom demo</h2>
-                  <p className="text-xs text-neutral-400 leading-relaxed">
-                    Explore the classroom controls with a sample lesson.
-                  </p>
-                  <button
-                    onClick={() => {
-                      const firstLess = lessons[0];
-                      if (firstLess) handleJoinClassroom(firstLess);
-                    }}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-neutral-950 hover:text-white font-bold text-xs px-5 py-2.5 rounded-xl transition"
-                  >
-                    Quick Demo: Connect First Scheduled Session
-                  </button>
-                </div>
-              )
-            } />
+            {/* Live Classroom — real Jitsi-based sessions */}
+            <Route path="/classroom/demo" element={<Classroom />} />
+            <Route path="/classroom/:bookingId" element={<Classroom />} />
+            {/* Tajweed Quiz */}
+            <Route path="/quiz/tajweed" element={<TajweedQuiz />} />
 
             {/* Admin CMS and database layout */}
             <Route path="/admin" element={isAdminAuthenticated ? (

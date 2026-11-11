@@ -16,7 +16,8 @@ import { PaymentsAdminPanel } from "./PricingPage";
 import { CourseApprovalPanel } from "./CoursesPage";
 
 type AdminSubTab = "overview" | "architecture" | "sitemap" | "database" | "curriculum" | "profiles" | "quran_crud" | "blog_crud"
-  | "accounts" | "tutor_applications" | "tutor_profiles" | "requests" | "resources" | "payments" | "courses" | "lesson_recovery" | "analytics";
+  | "accounts" | "tutor_applications" | "tutor_profiles" | "requests" | "resources" | "payments" | "courses" | "lesson_recovery" | "analytics"
+  | "demo_rooms" | "quiz_results";
 
 interface AdminCMSProps {
   curriculums: Curriculum[];
@@ -953,6 +954,28 @@ export default function AdminCMS({
               >
                 <BarChart3 size={13} />
                 <span>Analytics</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab("demo_rooms")}
+                className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl transition duration-300 flex items-center space-x-2.5 ${
+                  activeSubTab === "demo_rooms"
+                    ? "bg-sky-500 text-neutral-950 shadow-lg shadow-sky-500/10 font-extrabold"
+                    : "bg-neutral-950/80 text-neutral-400 hover:text-white border border-neutral-850 hover:bg-neutral-900"
+                }`}
+              >
+                <Zap size={13} />
+                <span>Demo Classroom</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab("quiz_results")}
+                className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl transition duration-300 flex items-center space-x-2.5 ${
+                  activeSubTab === "quiz_results"
+                    ? "bg-sky-500 text-neutral-950 shadow-lg shadow-sky-500/10 font-extrabold"
+                    : "bg-neutral-950/80 text-neutral-400 hover:text-white border border-neutral-850 hover:bg-neutral-900"
+                }`}
+              >
+                <CheckCircle size={13} />
+                <span>Quiz Results</span>
               </button>
             </div>
           </div>
@@ -3366,6 +3389,20 @@ export default function AdminCMS({
           </div>
         )}
 
+        {/* SUB-TAB: DEMO CLASSROOM MANAGEMENT */}
+        {activeSubTab === "demo_rooms" && (
+          <div className="animate-fade-in">
+            <DemoRoomsPanel token={token} />
+          </div>
+        )}
+
+        {/* SUB-TAB: TAJWEED QUIZ RESULTS */}
+        {activeSubTab === "quiz_results" && (
+          <div className="animate-fade-in">
+            <QuizResultsPanel token={token} />
+          </div>
+        )}
+
       </div>
 
     </div>
@@ -3522,6 +3559,192 @@ function AnalyticsPanel({ token }: { token: string }) {
           ))}
         </div>
       </>}
+    </div>
+  );
+}
+
+// ── Demo Rooms Panel ────────────────────────────────────────────────────────
+
+type DemoRoom = { id: string; title: string; description: string | null; roomSlug: string; isActive: boolean; createdAt: string };
+
+function DemoRoomsPanel({ token }: { token: string }) {
+  const [rooms, setRooms] = React.useState<DemoRoom[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [title, setTitle] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [roomSlug, setRoomSlug] = React.useState("");
+  const [isActive, setIsActive] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState("");
+
+  const load = () => {
+    setLoading(true);
+    accountRequest("/classroom/admin/list", token)
+      .then((data: DemoRoom[]) => { setRooms(data ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+
+  React.useEffect(() => { load(); }, []);
+
+  const handleCreate = async () => {
+    if (!title.trim() || !roomSlug.trim()) { setError("Title and Room Slug are required."); return; }
+    setSaving(true); setError("");
+    try {
+      await accountRequest("/classroom/admin", token, "POST", { title, description, roomSlug, isActive });
+      setTitle(""); setDescription(""); setRoomSlug(""); setIsActive(false);
+      load();
+    } catch (e: any) { setError(e?.message ?? "Failed to create."); }
+    finally { setSaving(false); }
+  };
+
+  const toggleActive = async (room: DemoRoom) => {
+    try {
+      await accountRequest(`/classroom/admin/${room.id}`, token, "PATCH", { isActive: !room.isActive });
+      load();
+    } catch { /* ignore */ }
+  };
+
+  const deleteRoom = async (id: string) => {
+    if (!window.confirm("Delete this demo room?")) return;
+    try { await accountRequest(`/classroom/admin/${id}`, token, "DELETE"); load(); }
+    catch { /* ignore */ }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-black text-white">Demo Classroom Rooms</h2>
+        <p className="text-xs text-neutral-400 mt-1">Manage the room shown in the homepage demo section. Only one room can be active at a time.</p>
+      </div>
+
+      {/* Create form */}
+      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 space-y-4">
+        <h3 className="text-sm font-bold text-white">Add New Demo Room</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-bold text-neutral-400 uppercase block mb-1">Title *</label>
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Open Demo Session"
+              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-emerald-500 transition" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-neutral-400 uppercase block mb-1">Room Slug * (letters, numbers, hyphens)</label>
+            <input value={roomSlug} onChange={e => setRoomSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} placeholder="qta-demo-open"
+              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white font-mono outline-none focus:border-emerald-500 transition" />
+          </div>
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-neutral-400 uppercase block mb-1">Description</label>
+          <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Open demo room for prospective students"
+            className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-emerald-500 transition" />
+        </div>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="demoActive" checked={isActive} onChange={e => setIsActive(e.target.checked)} className="w-4 h-4 accent-emerald-500" />
+          <label htmlFor="demoActive" className="text-xs text-neutral-300">Set as active (deactivates all others)</label>
+        </div>
+        {error && <p className="text-xs text-rose-400">{error}</p>}
+        <button onClick={handleCreate} disabled={saving}
+          className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-lg transition flex items-center gap-2">
+          {saving ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> Saving...</> : <><Plus size={12} /> Create Room</>}
+        </button>
+      </div>
+
+      {/* List */}
+      {loading ? (
+        <div className="flex justify-center py-8"><span className="w-6 h-6 border-2 border-neutral-800 border-t-emerald-400 rounded-full animate-spin" /></div>
+      ) : rooms.length === 0 ? (
+        <p className="text-xs text-neutral-500 text-center py-8">No demo rooms yet. Create one above.</p>
+      ) : (
+        <div className="space-y-3">
+          {rooms.map(r => (
+            <div key={r.id} className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 flex items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-bold text-white truncate">{r.title}</p>
+                  {r.isActive && <span className="text-[9px] bg-emerald-900 border border-emerald-500/30 text-emerald-400 px-1.5 py-0.5 rounded font-bold uppercase">Active</span>}
+                </div>
+                <p className="text-[10px] font-mono text-neutral-500 mt-0.5">{r.roomSlug}</p>
+                {r.description && <p className="text-xs text-neutral-400 mt-1">{r.description}</p>}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={() => toggleActive(r)}
+                  className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg border transition ${r.isActive ? "border-rose-700 text-rose-400 hover:bg-rose-950" : "border-emerald-700 text-emerald-400 hover:bg-emerald-950"}`}>
+                  {r.isActive ? "Deactivate" : "Set Active"}
+                </button>
+                <button onClick={() => deleteRoom(r.id)} className="text-neutral-500 hover:text-rose-400 transition">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Quiz Results Panel ───────────────────────────────────────────────────────
+
+type QuizResult = { id: string; name: string | null; email: string | null; score: number; maxScore: number; createdAt: string };
+
+function QuizResultsPanel({ token }: { token: string }) {
+  const [results, setResults] = React.useState<QuizResult[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    accountRequest("/quiz/admin", token)
+      .then((data: QuizResult[]) => { setResults(data ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const avgScore = results.length ? Math.round(results.reduce((s, r) => s + (r.score / r.maxScore) * 100, 0) / results.length) : 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-black text-white">Tajweed Quiz Results</h2>
+          <p className="text-xs text-neutral-400 mt-1">{results.length} submission(s) · avg {avgScore}%</p>
+        </div>
+        <a href="/quiz/tajweed" target="_blank" rel="noopener noreferrer"
+          className="text-xs text-emerald-400 hover:text-emerald-300 border border-emerald-800 px-3 py-1.5 rounded-lg transition">
+          View Quiz ↗
+        </a>
+      </div>
+      {loading ? (
+        <div className="flex justify-center py-8"><span className="w-6 h-6 border-2 border-neutral-800 border-t-emerald-400 rounded-full animate-spin" /></div>
+      ) : results.length === 0 ? (
+        <p className="text-xs text-neutral-500 text-center py-10">No quiz submissions yet.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-2xl border border-neutral-800">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-neutral-800 bg-neutral-900">
+                <th className="text-left px-4 py-3 text-neutral-400 font-bold">Name</th>
+                <th className="text-left px-4 py-3 text-neutral-400 font-bold">Email</th>
+                <th className="text-center px-4 py-3 text-neutral-400 font-bold">Score</th>
+                <th className="text-center px-4 py-3 text-neutral-400 font-bold">%</th>
+                <th className="text-left px-4 py-3 text-neutral-400 font-bold">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.map((r, i) => {
+                const pct = Math.round((r.score / r.maxScore) * 100);
+                return (
+                  <tr key={r.id} className={`border-b border-neutral-900 ${i % 2 === 0 ? "bg-neutral-950" : "bg-neutral-900/40"}`}>
+                    <td className="px-4 py-3 text-white font-medium">{r.name ?? <span className="text-neutral-500 italic">anonymous</span>}</td>
+                    <td className="px-4 py-3 text-neutral-400">{r.email ?? "—"}</td>
+                    <td className="px-4 py-3 text-center font-mono text-white">{r.score}/{r.maxScore}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`font-bold ${pct >= 70 ? "text-emerald-400" : pct >= 50 ? "text-amber-400" : "text-rose-400"}`}>{pct}%</span>
+                    </td>
+                    <td className="px-4 py-3 text-neutral-400">{new Date(r.createdAt).toLocaleDateString()}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

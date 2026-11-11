@@ -443,6 +443,31 @@ model Message {
   @@map("messages")
 }
 
+model DemoRoom {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  roomSlug    String   @unique
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("demo_rooms")
+}
+
+model TajweedQuizResult {
+  id        String   @id @default(uuid())
+  name      String?
+  email     String?
+  score     Int
+  maxScore  Int
+  answers   Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("tajweed_quiz_results")
+}
+
 model LearningRequest {
   id              String        @id @default(uuid())
   academyId       String
