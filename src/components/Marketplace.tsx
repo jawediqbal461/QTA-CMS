@@ -704,13 +704,13 @@ export function AccountPortal({ role, register = false, login = false }: { role:
 type UpcomingBooking = {
   id: string; scheduledAtUtc: string; durationMinutes: number; status: string;
   tutor?: { account?: { fullName?: string } };
-  student?: { account?: { fullName?: string } };
+  student?: { fullName?: string };
 };
 
 function CalendarView({ token, role }: { token: string; role: Role }) {
   const [bookings, setBookings] = useState<UpcomingBooking[]>([]);
   const [loading, setLoading] = useState(true);
-  const path = role === "TUTOR" ? "/tutor/bookings" : "/student/bookings";
+  const path = role === "TUTOR" ? "/tutor/bookings" : "/guardian/bookings";
 
   useEffect(() => {
     accountRequest(path, token)
@@ -746,7 +746,7 @@ function CalendarView({ token, role }: { token: string; role: Role }) {
                 const end = new Date(start.getTime() + b.durationMinutes * 60000);
                 const fmt = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
                 const other = role === "TUTOR"
-                  ? b.student?.account?.fullName ?? "Student"
+                  ? b.student?.fullName ?? "Student"
                   : b.tutor?.account?.fullName ?? "Tutor";
                 return <div key={b.id} className="flex items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3">
                   <div className="flex-1 min-w-0">

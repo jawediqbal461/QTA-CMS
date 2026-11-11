@@ -31,7 +31,7 @@ messagesRouter.get("/", asyncHandler(async (req, res) => {
     data: { readAt: new Date() },
   });
 
-  res.json(messages);
+  res.json({ messages, myId: accountId });
 }));
 
 // GET /api/messages/threads — list of conversations (most recent message per person)
@@ -63,7 +63,21 @@ messagesRouter.get("/threads", asyncHandler(async (req, res) => {
   });
   const unreadMap = Object.fromEntries(unreadCounts.map(r => [r.fromId, r._count.id]));
 
-  res.json(peers.map(p => ({ peerId: p.id, peerName: p.fullName, unread: unreadMap[p.id] ?? 0 })));
+  // Fetch the most recent message per peer for the lastMessage preview
+  const lastMessages = await Promise.all(peerIds.map(peerId =>
+    prisma.message.findFirst({
+      where: { academyId, OR: [{ fromId: accountId, toId: peerId }, { fromId: peerId, toId: accountId }] },
+      orderBy: { createdAt: "desc" },
+      select: { body: true, createdAt: true },
+    })
+  ));
+
+  res.json(peers.map((p, i) => ({
+    with: { id: p.id, fullName: p.fullName },
+    lastMessage: lastMessages[i]?.body ?? "",
+    lastAt: lastMessages[i]?.createdAt ?? new Date(0),
+    unread: unreadMap[p.id] ?? 0,
+  })));
 }));
 
 const msgBody = z.object({

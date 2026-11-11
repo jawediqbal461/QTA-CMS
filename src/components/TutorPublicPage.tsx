@@ -40,7 +40,13 @@ export default function TutorPublicPage() {
 
   // Review form state
   const [token] = useState<string | null>(() => {
-    try { return JSON.parse(localStorage.getItem("qta_session") || "null")?.token ?? null; } catch { return null; }
+    for (const role of ["student", "guardian", "tutor"]) {
+      try {
+        const val = sessionStorage.getItem(`qta_session_${role}`);
+        if (val) { const t = JSON.parse(val)?.token; if (t) return t; }
+      } catch { /* continue */ }
+    }
+    return null;
   });
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");

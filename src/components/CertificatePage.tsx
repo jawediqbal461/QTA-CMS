@@ -7,11 +7,16 @@ import { useSEO } from "../hooks/useSEO";
 type Session = { token: string; role: string; name: string; email: string } | null;
 
 function getSession(): Session {
-  try {
-    const raw = localStorage.getItem("qta_session");
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch { return null; }
+  for (const role of ["student", "guardian", "tutor"]) {
+    try {
+      const raw = sessionStorage.getItem(`qta_session_${role}`);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s?.token) return s;
+      }
+    } catch { /* continue */ }
+  }
+  return null;
 }
 
 type Booking = {
