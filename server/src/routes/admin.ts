@@ -629,3 +629,99 @@ adminRouter.get("/analytics", asyncHandler(async (req, res) => {
     sparkline,
   });
 }));
+
+// Overview dashboard — M25
+adminRouter.get("/overview", asyncHandler(async (req, res) => {
+  const { academyId } = req.session!;
+  const now = new Date();
+  const sixMonthsAgo = new Date(now);
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+  sixMonthsAgo.setDate(1);
+  sixMonthsAgo.setHours(0, 0, 0, 0);
+
+  const [bookings, memberCounts, learningRequests, activeCurriculums] = await Promise.all([
+    prisma.booking.findMany({
+      where: { academyId, createdAt: { gte: sixMonthsAgo } },
+      select: { createdAt: true },
+    }),
+    prisma.academyMembership.groupBy({
+      by: ["role"],
+      where: { academyId, status: "ACTIVE" },
+      _count: { _all: true },
+    }),
+    prisma.learningRequest.groupBy({
+      by: ["program"],
+      where: { academyId },
+      _count: { _all: true },
+    }),
+    prisma.curriculum.count({ where: { academyId } }),
+  ]);
+
+  const monthlyMap: Record<string, number> = {};
+  for (const b of bookings) {
+    const key = b.createdAt.toISOString().slice(0, 7);
+    monthlyMap[key] = (monthlyMap[key] ?? 0) + 1;
+  }
+  const monthlyBookings: { month: string; yearMonth: string; count: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now);
+    d.setMonth(d.getMonth() - i);
+    const yearMonth = d.toISOString().slice(0, 7);
+    const month = d.toLocaleDateString("en-US", { month: "short" });
+    monthlyBookings.push({ month, yearMonth, count: monthlyMap[yearMonth] ?? 0 });
+  }
+
+  const membersObj = Object.fromEntries(memberCounts.map((m) => [m.role, m._count._all]));
+  res.json({
+    monthlyBookings,
+    programDistribution: learningRequests.map((lr) => ({ program: lr.program, count: lr._count._all })),
+    counts: {
+      tutors: membersObj["TUTOR"] ?? 0,
+      students: membersObj["GUARDIAN"] ?? 0,
+      totalMembers: memberCounts.reduce((s, m) => s + m._count._all, 0),
+      activeCurriculums,
+    },
+  });
+}));
+
+// Curriculum CRUD — M25
+adminRouter.get("/curriculum", asyncHandler(async (req, res) => {
+  const { academyId } = req.session!;
+  res.json(await prisma.curriculum.findMany({ where: { academyId }, orderBy: { createdAt: "desc" } }));
+}));
+
+const curriculumCreateSchema = z.object({
+  title: z.string().trim().min(2).max(200),
+  program: z.string().trim().min(1).max(80),
+  level: z.string().trim().min(1).max(80),
+});
+
+adminRouter.post("/curriculum", asyncHandler(async (req, res) => {
+  const parsed = curriculumCreateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Title, program and level are required." });
+  const { academyId, accountId } = req.session!;
+  const curr = await prisma.curriculum.create({ data: { academyId, createdById: accountId, ...parsed.data } });
+  res.status(201).json(curr);
+}));
+
+adminRouter.delete("/curriculum/:id", asyncHandler(async (req, res) => {
+  const { academyId } = req.session!;
+  const result = await prisma.curriculum.deleteMany({ where: { id: req.params.id, academyId } });
+  if (!result.count) return res.status(404).json({ error: "Curriculum not found." });
+  res.json({ deleted: true });
+}));
+
+// Tutor bio update — M25
+const bioUpdateSchema = z.object({
+  bio: z.string().trim().max(2000).optional(),
+  experienceYears: z.number().int().min(0).max(80).optional(),
+});
+
+adminRouter.patch("/tutors/:id/bio", asyncHandler(async (req, res) => {
+  const parsed = bioUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid bio data." });
+  const { academyId } = req.session!;
+  const result = await prisma.tutorProfile.updateMany({ where: { accountId: req.params.id, academyId }, data: parsed.data });
+  if (!result.count) return res.status(404).json({ error: "Tutor not found." });
+  res.json({ saved: true });
+}));

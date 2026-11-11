@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Database, Cpu, Code2, Layers, BookOpen, UserPlus, Sliders, CheckCircle,
   Copy, Check, FileText, Globe, Zap, AlertCircle, Trash2, ArrowUpRight, HelpCircle,
@@ -118,6 +118,26 @@ export default function AdminCMS({
   const [profileSeoTitle, setProfileSeoTitle] = useState(tutors[0]?.seoTitle || "");
   const [profileSeoDescription, setProfileSeoDescription] = useState(tutors[0]?.seoDescription || "");
   const [profileSaved, setProfileSaved] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  // Live API data for overview / curriculum / profiles
+  type OverviewData = {
+    monthlyBookings: { month: string; yearMonth: string; count: number }[];
+    programDistribution: { program: string; count: number }[];
+    counts: { tutors: number; students: number; totalMembers: number; activeCurriculums: number };
+  };
+  type ApiTutorItem = {
+    accountId: string; bio: string | null; experienceYears: number; specialties: string[];
+    hourlyRate: string; languages: string[]; approvalStatus: string;
+    account: { fullName: string; email: string };
+  };
+  type DbCurriculumItem = { id: string; title: string; program: string; level: string; status: string; createdAt: string; };
+
+  const [overviewData, setOverviewData] = useState<OverviewData | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [apiTutors, setApiTutors] = useState<ApiTutorItem[] | null>(null);
+  const [apiCurriculums, setApiCurriculums] = useState<DbCurriculumItem[] | null>(null);
+  const [curriculumLoading, setCurriculumLoading] = useState(false);
 
   // --- INTEGRATED QURAN CRUD STATE ---
   const [surahs, setSurahs] = useState<Surah[]>(() => {
@@ -727,46 +747,89 @@ export default function AdminCMS({
     setTimeout(() => setCopiedKey(null), 2500);
   };
 
-  const handleAddCurriculumSubmit = (e: React.FormEvent) => {
+  const handleAddCurriculumSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim() || !newDesc.trim()) return;
-
-    const newCurr: Curriculum = {
-      id: "curr-" + Date.now(),
-      title: newTitle,
-      category: newCategory,
-      difficulty: newDifficulty,
-      lessonsCount: newLessonsCount,
-      description: newDesc,
-      modules: [
-        { id: "mod-" + Date.now() + "-1", title: "Module 1: Introductory Session", description: "Assessment of current student level." },
-        { id: "mod-" + Date.now() + "-2", title: "Module 2: Practical Drills", description: "Vocalization exercises and repetition drills." }
-      ]
-    };
-
-    onAddCurriculum(newCurr);
-    setNewTitle("");
-    setNewDesc("");
-    setCurriculumSaved(true);
-    setTimeout(() => setCurriculumSaved(false), 2000);
+    if (!newTitle.trim()) return;
+    try {
+      const created = await accountRequest<DbCurriculumItem>("/admin/curriculum", token, "POST", {
+        title: newTitle.trim(),
+        program: newCategory,
+        level: newDifficulty,
+      });
+      setApiCurriculums(prev => prev ? [created, ...prev] : [created]);
+      setNewTitle("");
+      setNewDesc("");
+      setCurriculumSaved(true);
+      setTimeout(() => setCurriculumSaved(false), 2000);
+    } catch {
+      // keep form open on error
+    }
   };
 
-  const handleUpdateProfileSubmit = (e: React.FormEvent) => {
+  const handleUpdateProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTutorId) return;
-
-    onUpdateTutorProfile(selectedTutorId, {
-      bio: profileBio,
-      experience: profileExp,
-      seoTitle: profileSeoTitle.trim() || undefined,
-      seoDescription: profileSeoDescription.trim() || undefined
-    });
-
-    setProfileSaved(true);
-    setTimeout(() => setProfileSaved(false), 2500);
+    setProfileSaving(true);
+    try {
+      await accountRequest("/admin/tutors/" + selectedTutorId + "/bio", token, "PATCH", {
+        bio: profileBio,
+        experienceYears: parseInt(profileExp) || undefined,
+      });
+      // Keep local mock state in sync for props-based render fallback
+      onUpdateTutorProfile(selectedTutorId, { bio: profileBio, experience: profileExp });
+      setProfileSaved(true);
+      setTimeout(() => setProfileSaved(false), 2500);
+    } catch {
+      // show error
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
-  const activeTutorObj = tutors.find(t => t.id === selectedTutorId);
+  const activeTutorObj = apiTutors?.find(t => t.accountId === selectedTutorId)
+    ?? tutors.find(t => t.id === selectedTutorId);
+
+  // Load overview + tutors + operations when overview tab is opened
+  useEffect(() => {
+    if (activeSubTab === "overview" && !overviewData && !overviewLoading && token) {
+      setOverviewLoading(true);
+      Promise.all([
+        accountRequest<OverviewData>("/admin/overview", token),
+        accountRequest<ApiTutorItem[]>("/admin/tutors", token),
+        accountRequest<{ audit: { id: string; action: string; targetType: string; targetId: string; createdAt: string; actor: { fullName: string } | null }[] }>("/admin/operations", token),
+      ]).then(([ov, tuts, ops]) => {
+        setOverviewData(ov);
+        setApiTutors(tuts);
+        if (ops?.audit?.length) {
+          setLiveLogs(ops.audit.slice(0, 20).map((e) => ({
+            id: e.id,
+            time: new Date(e.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            category: e.action.startsWith("booking") ? "class" : e.action.startsWith("tutor") ? "tutor" : "system",
+            text: `${e.actor?.fullName ?? "System"}: ${e.action.replace(/\./g, " ")} [${e.targetType} ${e.targetId?.slice(0, 8)}]`,
+            status: "acknowledged",
+          })));
+        }
+      }).catch(() => {}).finally(() => setOverviewLoading(false));
+    }
+  }, [activeSubTab, token]);
+
+  // Load curriculum list when curriculum tab is opened
+  useEffect(() => {
+    if (activeSubTab === "curriculum" && !apiCurriculums && !curriculumLoading && token) {
+      setCurriculumLoading(true);
+      accountRequest<DbCurriculumItem[]>("/admin/curriculum", token)
+        .then(setApiCurriculums)
+        .catch(() => {})
+        .finally(() => setCurriculumLoading(false));
+    }
+  }, [activeSubTab, token]);
+
+  // Load tutors for profiles tab if not yet loaded
+  useEffect(() => {
+    if (activeSubTab === "profiles" && !apiTutors && token) {
+      accountRequest<ApiTutorItem[]>("/admin/tutors", token).then(setApiTutors).catch(() => {});
+    }
+  }, [activeSubTab, token]);
 
   const breadcrumbItems = [
     { 
@@ -1138,17 +1201,15 @@ export default function AdminCMS({
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
                     <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">Scholar Tutors</span>
-                    <h3 className="text-2xl font-extrabold text-white">{tutors.length || 3}</h3>
+                    <h3 className="text-2xl font-extrabold text-white">{overviewData?.counts.tutors ?? (overviewLoading ? "…" : "—")}</h3>
                   </div>
                   <div className="p-2 bg-amber-950/60 border border-amber-500/20 text-amber-500 rounded-xl">
                     <UserPlus size={16} />
                   </div>
                 </div>
                 <div className="flex items-center space-x-2 text-xs">
-                  <span className="text-amber-500 font-bold flex items-center">
-                    ★ 4.92 Avg
-                  </span>
-                  <span className="text-neutral-500">Active matching</span>
+                  <span className="text-amber-500 font-bold flex items-center">Active members</span>
+                  <span className="text-neutral-500">Live DB count</span>
                 </div>
                 <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 to-transparent opacity-30" />
               </div>
@@ -1157,39 +1218,37 @@ export default function AdminCMS({
               <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 space-y-3 relative overflow-hidden group hover:border-neutral-750 transition duration-300 shadow-md">
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
-                    <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">Lessons Logged</span>
-                    <h3 className="text-2xl font-extrabold text-white">482</h3>
+                    <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">Student Families</span>
+                    <h3 className="text-2xl font-extrabold text-white">{overviewData?.counts.students ?? (overviewLoading ? "…" : "—")}</h3>
                   </div>
                   <div className="p-2 bg-indigo-950/60 border border-indigo-500/20 text-indigo-400 rounded-xl">
                     <Calendar size={16} />
                   </div>
                 </div>
                 <div className="flex items-center space-x-2 text-xs">
-                  <span className="text-indigo-400 font-bold">
-                    98.6% Attendance
-                  </span>
-                  <span className="text-neutral-500">Syllabus synced</span>
+                  <span className="text-indigo-400 font-bold">Guardians enrolled</span>
+                  <span className="text-neutral-500">Active</span>
                 </div>
                 <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 to-transparent opacity-30" />
               </div>
 
-              {/* CARD 4: BILLING */}
+              {/* CARD 4: CURRICULA */}
               <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 space-y-3 relative overflow-hidden group hover:border-neutral-750 transition duration-300 shadow-md">
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
-                    <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">Est. Monthly MRR</span>
-                    <h3 className="text-2xl font-extrabold text-white">$14,850</h3>
+                    <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">Curricula on Record</span>
+                    <h3 className="text-2xl font-extrabold text-white">{overviewData?.counts.activeCurriculums ?? (overviewLoading ? "…" : "—")}</h3>
                   </div>
                   <div className="p-2 bg-emerald-950/60 border border-emerald-500/20 text-emerald-400 rounded-xl">
-                    <DollarSign size={16} />
+                    <BookOpen size={16} />
                   </div>
                 </div>
                 <div className="flex items-center space-x-2 text-xs">
                   <span className="text-emerald-400 font-bold flex items-center">
                     <TrendingUp size={12} className="mr-1" />
-                    +9.8%
+                    Live DB
                   </span>
-                  <span className="text-neutral-500">Stripe billing gateway</span>
+                  <span className="text-neutral-500">Curriculum programs</span>
                 </div>
                 <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 to-transparent opacity-30" />
               </div>
@@ -1215,95 +1274,62 @@ export default function AdminCMS({
                 </div>
 
                 {/* SVG CUSTOM INTERACTIVE CHART */}
-                <div className="relative pt-4 bg-neutral-950 p-4 rounded-2xl border border-neutral-850 h-56 flex flex-col justify-between">
-                  <svg className="w-full h-40 overflow-visible" viewBox="0 0 500 160">
-                    <defs>
-                      <linearGradient id="chartGlow" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.25" />
-                        <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
-                      </linearGradient>
-                    </defs>
-
-                    {/* Guidelines */}
-                    <line x1="0" y1="40" x2="500" y2="40" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
-                    <line x1="0" y1="80" x2="500" y2="80" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
-                    <line x1="0" y1="120" x2="500" y2="120" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
-
-                    {/* Gradient Area */}
-                    <path 
-                      d="M 40 140 C 100 120, 140 100, 200 80 C 260 65, 320 50, 380 40 C 420 30, 440 25, 460 20 L 460 150 L 40 150 Z" 
-                      fill="url(#chartGlow)" 
-                    />
-
-                    {/* Bezier Line */}
-                    <path 
-                      d="M 40 140 C 100 120, 140 100, 200 80 C 260 65, 320 50, 380 40 C 420 30, 440 25, 460 20" 
-                      fill="none" 
-                      stroke="#f59e0b" 
-                      strokeWidth="3.5" 
-                      strokeLinecap="round"
-                    />
-
-                    {/* Interactive Points */}
-                    {[
-                      { m: "January", x: 40, y: 140, v: "120 classes", b: "$4,800" },
-                      { m: "February", x: 120, y: 110, v: "180 classes", b: "$7,200" },
-                      { m: "March", x: 200, y: 80, v: "240 classes", b: "$9,600" },
-                      { m: "April", x: 280, y: 65, v: "320 classes", b: "$12,800" },
-                      { m: "May", x: 360, y: 40, v: "410 classes", b: "$16,400" },
-                      { m: "June", x: 460, y: 20, v: "482 classes", b: "$19,280" }
-                    ].map((pt, idx) => (
-                      <g key={idx}>
-                        <circle 
-                          cx={pt.x} 
-                          cy={pt.y} 
-                          r={hoveredMonth === pt.m ? "7" : "5"} 
-                          className="fill-amber-500 cursor-pointer stroke-neutral-950 stroke-2 transition-all duration-200"
-                          onMouseEnter={() => setHoveredMonth(pt.m)}
-                          onMouseLeave={() => setHoveredMonth(null)}
-                        />
-                        {/* Hover Overlay Pulse */}
-                        {hoveredMonth === pt.m && (
-                          <circle cx={pt.x} cy={pt.y} r="14" fill="none" stroke="#f59e0b" strokeWidth="1" className="animate-ping" />
-                        )}
-                      </g>
-                    ))}
-                  </svg>
-
-                  {/* Horizontal Labels */}
-                  <div className="flex justify-between px-6 text-[10px] text-neutral-500 font-bold font-mono">
-                    <span>Jan (120)</span>
-                    <span>Feb (180)</span>
-                    <span>Mar (240)</span>
-                    <span>Apr (320)</span>
-                    <span>May (410)</span>
-                    <span>Jun (482)</span>
-                  </div>
-
-                  {/* Absolute Interactive Floating Tooltip */}
-                  {hoveredMonth && (
-                    <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-neutral-900 border border-amber-500/40 p-3 rounded-xl shadow-2xl text-xs space-y-1 animate-scale-in z-20 w-48 text-center">
-                      <span className="font-extrabold text-amber-500 uppercase text-[9px] tracking-wider block">{hoveredMonth} Metrics</span>
-                      <p className="text-white font-bold text-sm">
-                        {hoveredMonth === "January" && "120 Lessons"}
-                        {hoveredMonth === "February" && "180 Lessons"}
-                        {hoveredMonth === "March" && "240 Lessons"}
-                        {hoveredMonth === "April" && "320 Lessons"}
-                        {hoveredMonth === "May" && "410 Lessons"}
-                        {hoveredMonth === "June" && "482 Lessons"}
-                      </p>
-                      <p className="text-emerald-400 font-mono text-[11px] font-semibold">
-                        Est. Volume: {
-                          hoveredMonth === "January" ? "$4,800" :
-                          hoveredMonth === "February" ? "$7,200" :
-                          hoveredMonth === "March" ? "$9,600" :
-                          hoveredMonth === "April" ? "$12,800" :
-                          hoveredMonth === "May" ? "$16,400" : "$19,280"
-                        }
-                      </p>
+                {(() => {
+                  const months = overviewData?.monthlyBookings ?? Array.from({ length: 6 }, (_, i) => {
+                    const d = new Date(); d.setMonth(d.getMonth() - (5 - i));
+                    return { month: d.toLocaleDateString("en-US", { month: "short" }), yearMonth: "", count: 0 };
+                  });
+                  const xs = [40, 120, 200, 280, 360, 460];
+                  const maxCount = Math.max(1, ...months.map(m => m.count));
+                  const toY = (c: number) => 150 - (c / maxCount) * 130;
+                  const pts = months.map((m, i) => ({ ...m, x: xs[i], y: toY(m.count) }));
+                  const linePath = pts.map((pt, i) => {
+                    if (i === 0) return `M ${pt.x} ${pt.y}`;
+                    const prev = pts[i - 1]; const cpX = (prev.x + pt.x) / 2;
+                    return `C ${cpX} ${prev.y}, ${cpX} ${pt.y}, ${pt.x} ${pt.y}`;
+                  }).join(" ");
+                  const areaPath = linePath + ` L ${pts[pts.length - 1].x} 150 L ${pts[0].x} 150 Z`;
+                  const hovered = pts.find(p => p.month === hoveredMonth);
+                  return (
+                    <div className="relative pt-4 bg-neutral-950 p-4 rounded-2xl border border-neutral-850 h-56 flex flex-col justify-between">
+                      {overviewLoading && <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-neutral-950/80 text-xs text-neutral-500">Loading…</div>}
+                      <svg className="w-full h-40 overflow-visible" viewBox="0 0 500 160">
+                        <defs>
+                          <linearGradient id="chartGlow" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.25" />
+                            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
+                          </linearGradient>
+                        </defs>
+                        <line x1="0" y1="40" x2="500" y2="40" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
+                        <line x1="0" y1="80" x2="500" y2="80" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
+                        <line x1="0" y1="120" x2="500" y2="120" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
+                        <path d={areaPath} fill="url(#chartGlow)" />
+                        <path d={linePath} fill="none" stroke="#f59e0b" strokeWidth="3.5" strokeLinecap="round" />
+                        {pts.map((pt, idx) => (
+                          <g key={idx}>
+                            <circle cx={pt.x} cy={pt.y} r={hoveredMonth === pt.month ? "7" : "5"}
+                              className="fill-amber-500 cursor-pointer stroke-neutral-950 stroke-2 transition-all duration-200"
+                              onMouseEnter={() => setHoveredMonth(pt.month)}
+                              onMouseLeave={() => setHoveredMonth(null)} />
+                            {hoveredMonth === pt.month && (
+                              <circle cx={pt.x} cy={pt.y} r="14" fill="none" stroke="#f59e0b" strokeWidth="1" className="animate-ping" />
+                            )}
+                          </g>
+                        ))}
+                      </svg>
+                      <div className="flex justify-between px-6 text-[10px] text-neutral-500 font-bold font-mono">
+                        {pts.map((pt, i) => <span key={i}>{pt.month} ({pt.count})</span>)}
+                      </div>
+                      {hovered && (
+                        <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-neutral-900 border border-amber-500/40 p-3 rounded-xl shadow-2xl text-xs space-y-1 z-20 w-48 text-center">
+                          <span className="font-extrabold text-amber-500 uppercase text-[9px] tracking-wider block">{hovered.month} Metrics</span>
+                          <p className="text-white font-bold text-sm">{hovered.count} Bookings</p>
+                          <p className="text-emerald-400 font-mono text-[11px] font-semibold">Est. ${(hovered.count * 40).toLocaleString()}</p>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
               </div>
 
               {/* GAUGE CHART: COURSE ENROLLMENT */}
@@ -1316,125 +1342,54 @@ export default function AdminCMS({
                   <p className="text-[11px] text-neutral-400">Relative allocation of student registrations. Hover for student metrics.</p>
                 </div>
 
-                <div className="flex flex-col items-center justify-center py-2 space-y-4">
-                  {/* Visual SVG Donut Indicator */}
-                  <div className="relative w-28 h-28 flex items-center justify-center">
-                    <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                      {/* Gray base circle */}
-                      <circle cx="18" cy="18" r="15.915" fill="none" stroke="#262626" strokeWidth="4" />
-                      
-                      {/* Tajweed Segment: 40% (Amber) */}
-                      <circle 
-                        cx="18" 
-                        cy="18" 
-                        r="15.915" 
-                        fill="none" 
-                        stroke="#f59e0b" 
-                        strokeWidth="4" 
-                        strokeDasharray="40 100" 
-                        strokeDashoffset="0" 
-                        className={`transition-all duration-300 ${hoveredCategory === "Tajweed" ? "stroke-[5]" : ""}`}
-                      />
-
-                      {/* Noorani Qaida: 30% (Emerald) */}
-                      <circle 
-                        cx="18" 
-                        cy="18" 
-                        r="15.915" 
-                        fill="none" 
-                        stroke="#10b981" 
-                        strokeWidth="4" 
-                        strokeDasharray="30 100" 
-                        strokeDashoffset="-40" 
-                        className={`transition-all duration-300 ${hoveredCategory === "Qaida" ? "stroke-[5]" : ""}`}
-                      />
-
-                      {/* Hifz Progress: 20% (Indigo) */}
-                      <circle 
-                        cx="18" 
-                        cy="18" 
-                        r="15.915" 
-                        fill="none" 
-                        stroke="#6366f1" 
-                        strokeWidth="4" 
-                        strokeDasharray="20 100" 
-                        strokeDashoffset="-70" 
-                        className={`transition-all duration-300 ${hoveredCategory === "Hifz" ? "stroke-[5]" : ""}`}
-                      />
-
-                      {/* Tafseer: 10% (Purple) */}
-                      <circle 
-                        cx="18" 
-                        cy="18" 
-                        r="15.915" 
-                        fill="none" 
-                        stroke="#a855f7" 
-                        strokeWidth="4" 
-                        strokeDasharray="10 100" 
-                        strokeDashoffset="-90" 
-                        className={`transition-all duration-300 ${hoveredCategory === "Tafseer" ? "stroke-[5]" : ""}`}
-                      />
-                    </svg>
-                    
-                    {/* Center Text */}
-                    <div className="absolute flex flex-col items-center">
-                      <span className="text-xl font-extrabold text-white">248</span>
-                      <span className="text-[8px] font-mono uppercase text-neutral-400">Students</span>
-                    </div>
-                  </div>
-
-                  {/* Legend Switchers */}
-                  <div className="grid grid-cols-2 gap-2 w-full text-[10px]">
-                    <div 
-                      onMouseEnter={() => setHoveredCategory("Tajweed")}
-                      onMouseLeave={() => setHoveredCategory(null)}
-                      className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center justify-between ${hoveredCategory === "Tajweed" ? "bg-amber-950/20 border-amber-500/40 text-white" : "border-transparent text-neutral-400"}`}
-                    >
-                      <div className="flex items-center space-x-1.5">
-                        <span className="w-2 h-2 rounded-full bg-amber-500" />
-                        <span>Tajweed (40%)</span>
+                {(() => {
+                  const PROG_COLORS = ["#f59e0b", "#10b981", "#6366f1", "#a855f7"];
+                  const dist = overviewData?.programDistribution?.length
+                    ? overviewData.programDistribution.slice(0, 4)
+                    : [{ program: "Tajweed", count: 0 }, { program: "Qaida", count: 0 }, { program: "Hifz", count: 0 }, { program: "Tafseer", count: 0 }];
+                  const total = Math.max(1, dist.reduce((s, p) => s + p.count, 0));
+                  let cumOffset = 0;
+                  const segments = dist.map((p, i) => {
+                    const pct = (p.count / total) * 100;
+                    const seg = { ...p, pct, offset: -cumOffset, color: PROG_COLORS[i] };
+                    cumOffset += pct;
+                    return seg;
+                  });
+                  const totalStudents = overviewData?.counts.totalMembers ?? 0;
+                  return (
+                    <div className="flex flex-col items-center justify-center py-2 space-y-4">
+                      <div className="relative w-28 h-28 flex items-center justify-center">
+                        <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                          <circle cx="18" cy="18" r="15.915" fill="none" stroke="#262626" strokeWidth="4" />
+                          {segments.map((seg, i) => (
+                            <circle key={i} cx="18" cy="18" r="15.915" fill="none" stroke={seg.color} strokeWidth="4"
+                              strokeDasharray={`${seg.pct} 100`} strokeDashoffset={String(seg.offset)}
+                              className={`transition-all duration-300 ${hoveredCategory === seg.program ? "stroke-[5]" : ""}`} />
+                          ))}
+                        </svg>
+                        <div className="absolute flex flex-col items-center">
+                          <span className="text-xl font-extrabold text-white">{totalStudents}</span>
+                          <span className="text-[8px] font-mono uppercase text-neutral-400">Members</span>
+                        </div>
                       </div>
-                      {hoveredCategory === "Tajweed" && <span className="font-bold text-amber-500">99 std</span>}
-                    </div>
-
-                    <div 
-                      onMouseEnter={() => setHoveredCategory("Qaida")}
-                      onMouseLeave={() => setHoveredCategory(null)}
-                      className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center justify-between ${hoveredCategory === "Qaida" ? "bg-emerald-950/20 border-emerald-500/40 text-white" : "border-transparent text-neutral-400"}`}
-                    >
-                      <div className="flex items-center space-x-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                        <span>Qaida (30%)</span>
+                      <div className="grid grid-cols-2 gap-2 w-full text-[10px]">
+                        {segments.map((seg, i) => (
+                          <div key={i}
+                            onMouseEnter={() => setHoveredCategory(seg.program)}
+                            onMouseLeave={() => setHoveredCategory(null)}
+                            className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center justify-between ${hoveredCategory === seg.program ? "border-neutral-600 text-white" : "border-transparent text-neutral-400"}`}
+                          >
+                            <div className="flex items-center space-x-1.5">
+                              <span className="w-2 h-2 rounded-full" style={{ background: seg.color }} />
+                              <span>{seg.program} ({Math.round(seg.pct)}%)</span>
+                            </div>
+                            {hoveredCategory === seg.program && <span className="font-bold" style={{ color: seg.color }}>{seg.count} req</span>}
+                          </div>
+                        ))}
                       </div>
-                      {hoveredCategory === "Qaida" && <span className="font-bold text-emerald-400">74 std</span>}
                     </div>
-
-                    <div 
-                      onMouseEnter={() => setHoveredCategory("Hifz")}
-                      onMouseLeave={() => setHoveredCategory(null)}
-                      className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center justify-between ${hoveredCategory === "Hifz" ? "bg-indigo-950/20 border-indigo-500/40 text-white" : "border-transparent text-neutral-400"}`}
-                    >
-                      <div className="flex items-center space-x-1.5">
-                        <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                        <span>Hifz (20%)</span>
-                      </div>
-                      {hoveredCategory === "Hifz" && <span className="font-bold text-indigo-400">50 std</span>}
-                    </div>
-
-                    <div 
-                      onMouseEnter={() => setHoveredCategory("Tafseer")}
-                      onMouseLeave={() => setHoveredCategory(null)}
-                      className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center justify-between ${hoveredCategory === "Tafseer" ? "bg-purple-950/20 border-purple-500/40 text-white" : "border-transparent text-neutral-400"}`}
-                    >
-                      <div className="flex items-center space-x-1.5">
-                        <span className="w-2 h-2 rounded-full bg-purple-500" />
-                        <span>Tafseer (10%)</span>
-                      </div>
-                      {hoveredCategory === "Tafseer" && <span className="font-bold text-purple-400">25 std</span>}
-                    </div>
-                  </div>
-
-                </div>
+                  );
+                })()}
               </div>
 
             </div>
@@ -1521,50 +1476,52 @@ export default function AdminCMS({
                 </div>
               </div>
 
-              {/* SYSTEMS DIAGNOSTICS CORE */}
+              {/* ACADEMY SNAPSHOT */}
               <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5 md:p-6 space-y-5 shadow-lg flex flex-col justify-between">
                 <div className="space-y-1.5">
                   <h4 className="text-sm font-bold text-white flex items-center">
                     <Sliders size={15} className="text-indigo-400 mr-2" />
-                    Demo Data Snapshot
+                    Academy Snapshot
                   </h4>
-                  <p className="text-[11px] text-neutral-400">This pilot stores all records in your browser's local storage — there's no live database behind it yet. Use the button below to export a JSON snapshot.</p>
+                  <p className="text-[11px] text-neutral-400">Live record counts from the PostgreSQL database, scoped to this academy.</p>
                 </div>
 
-                {/* Local data summary */}
                 <div className="space-y-2 text-xs">
-                  <div className="flex justify-between border-b border-neutral-800 pb-1.5">
-                    <span className="text-neutral-400 font-semibold">Storage Backend</span>
-                    <span className="text-white font-mono">Browser localStorage</span>
-                  </div>
-                  <div className="flex justify-between border-b border-neutral-800 pb-1.5">
-                    <span className="text-neutral-400 font-semibold">Tutors on Record</span>
-                    <span className="text-white font-mono">{tutors.length}</span>
-                  </div>
-                  <div className="flex justify-between border-b border-neutral-800 pb-1.5">
-                    <span className="text-neutral-400 font-semibold">Curriculum Programs</span>
-                    <span className="text-white font-mono">{curriculums.length}</span>
-                  </div>
-                </div>
-
-                {/* Backup Trigger Block */}
-                <div className="space-y-3">
-                  <button
-                    onClick={triggerDatabaseBackup}
-                    disabled={isBackupSimulating}
-                    className="w-full bg-neutral-950 hover:bg-neutral-900 text-amber-500 border border-amber-500/20 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 disabled:opacity-50"
-                  >
-                    <RefreshCw size={13} className={isBackupSimulating ? "animate-spin text-amber-400" : "text-amber-500"} />
-                    <span>{isBackupSimulating ? "Preparing snapshot..." : "Export Local Data Snapshot"}</span>
-                  </button>
-
-                  {backupSuccess && (
-                    <div className="bg-emerald-950 text-emerald-400 border border-emerald-500/20 px-3 py-2 rounded-xl text-center text-[10px] font-bold animate-pulse">
-                      ✓ Snapshot of current local data prepared!
-                    </div>
+                  {overviewLoading ? (
+                    <p className="text-neutral-500 text-center py-4">Loading…</p>
+                  ) : (
+                    <>
+                      <div className="flex justify-between border-b border-neutral-800 pb-1.5">
+                        <span className="text-neutral-400 font-semibold">Storage Backend</span>
+                        <span className="text-emerald-400 font-mono font-bold">PostgreSQL Live DB</span>
+                      </div>
+                      <div className="flex justify-between border-b border-neutral-800 pb-1.5">
+                        <span className="text-neutral-400 font-semibold">Active Tutors</span>
+                        <span className="text-white font-mono">{overviewData?.counts.tutors ?? "—"}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-neutral-800 pb-1.5">
+                        <span className="text-neutral-400 font-semibold">Student Families</span>
+                        <span className="text-white font-mono">{overviewData?.counts.students ?? "—"}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-neutral-800 pb-1.5">
+                        <span className="text-neutral-400 font-semibold">Total Members</span>
+                        <span className="text-white font-mono">{overviewData?.counts.totalMembers ?? "—"}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-neutral-800 pb-1.5">
+                        <span className="text-neutral-400 font-semibold">Curricula on Record</span>
+                        <span className="text-white font-mono">{overviewData?.counts.activeCurriculums ?? "—"}</span>
+                      </div>
+                    </>
                   )}
                 </div>
 
+                <button
+                  onClick={() => { setOverviewData(null); setOverviewLoading(false); setApiTutors(null); }}
+                  className="w-full bg-neutral-950 hover:bg-neutral-900 text-amber-500 border border-amber-500/20 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2"
+                >
+                  <RefreshCw size={13} className="text-amber-500" />
+                  <span>Refresh Snapshot</span>
+                </button>
               </div>
 
             </div>
@@ -1580,53 +1537,71 @@ export default function AdminCMS({
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left text-neutral-300">
-                  <thead className="text-[10px] text-neutral-400 uppercase bg-neutral-950 rounded-lg">
-                    <tr>
-                      <th className="px-4 py-3 rounded-l-lg">Scholar Name</th>
-                      <th className="px-4 py-3">Academic Exp</th>
-                      <th className="px-4 py-3">Completed Classes</th>
-                      <th className="px-4 py-3">Rate/hr</th>
-                      <th className="px-4 py-3">Specialties</th>
-                      <th className="px-4 py-3 rounded-r-lg text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tutors.map((t) => (
-                      <tr key={t.id} className="border-b border-neutral-800 hover:bg-neutral-850/50 transition">
-                        <td className="px-4 py-3.5 font-bold text-white flex items-center space-x-2">
-                          <img src={t.avatar} alt={t.name} className="w-6 h-6 rounded-full object-cover" />
-                          <span>{t.name}</span>
-                        </td>
-                        <td className="px-4 py-3.5 text-neutral-400">{t.experience}</td>
-                        <td className="px-4 py-3.5 font-mono text-neutral-400">{t.lessonsCompleted || 120} classes</td>
-                        <td className="px-4 py-3.5 font-bold text-emerald-400 font-mono">${t.hourlyRate || 35}/hr</td>
-                        <td className="px-4 py-3.5">
-                          <div className="flex flex-wrap gap-1">
-                            {t.specialties.slice(0, 2).map((sp, idx) => (
-                              <span key={idx} className="bg-neutral-950 text-[9px] text-neutral-400 border border-neutral-800 px-2 py-0.5 rounded font-medium">
-                                {sp}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3.5 text-right">
-                          <button
-                            onClick={() => {
-                              setSelectedTutorId(t.id);
-                              setProfileBio(t.bio);
-                              setProfileExp(t.experience);
-                              setActiveSubTab("profiles");
-                            }}
-                            className="bg-amber-600/10 hover:bg-amber-600 hover:text-neutral-950 text-amber-500 border border-amber-500/20 text-[10px] px-2.5 py-1.5 rounded-xl font-bold transition duration-300"
-                          >
-                            Update Bio
-                          </button>
-                        </td>
+                {overviewLoading && !apiTutors ? (
+                  <p className="text-neutral-500 text-xs text-center py-6">Loading tutors…</p>
+                ) : (
+                  <table className="w-full text-xs text-left text-neutral-300">
+                    <thead className="text-[10px] text-neutral-400 uppercase bg-neutral-950 rounded-lg">
+                      <tr>
+                        <th className="px-4 py-3 rounded-l-lg">Scholar Name</th>
+                        <th className="px-4 py-3">Academic Exp</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3">Rate/hr</th>
+                        <th className="px-4 py-3">Specialties</th>
+                        <th className="px-4 py-3 rounded-r-lg text-right">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {(apiTutors ?? []).map((t) => (
+                        <tr key={t.accountId} className="border-b border-neutral-800 hover:bg-neutral-850/50 transition">
+                          <td className="px-4 py-3.5 font-bold text-white">
+                            <div className="flex items-center space-x-2">
+                              <span className="w-6 h-6 rounded-full bg-amber-600/20 text-amber-500 flex items-center justify-center text-[10px] font-extrabold">
+                                {t.account.fullName?.charAt(0) ?? "T"}
+                              </span>
+                              <div>
+                                <p>{t.account.fullName}</p>
+                                <p className="text-[10px] text-neutral-500 font-normal">{t.account.email}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5 text-neutral-400">{t.experienceYears} yrs</td>
+                          <td className="px-4 py-3.5">
+                            <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${
+                              t.approvalStatus === "APPROVED" ? "bg-emerald-950 text-emerald-400" :
+                              t.approvalStatus === "PENDING" ? "bg-amber-950 text-amber-400" :
+                              "bg-rose-950 text-rose-400"
+                            }`}>{t.approvalStatus}</span>
+                          </td>
+                          <td className="px-4 py-3.5 font-bold text-emerald-400 font-mono">${t.hourlyRate}/hr</td>
+                          <td className="px-4 py-3.5">
+                            <div className="flex flex-wrap gap-1">
+                              {t.specialties.slice(0, 2).map((sp, idx) => (
+                                <span key={idx} className="bg-neutral-950 text-[9px] text-neutral-400 border border-neutral-800 px-2 py-0.5 rounded font-medium">{sp}</span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <button
+                              onClick={() => {
+                                setSelectedTutorId(t.accountId);
+                                setProfileBio(t.bio ?? "");
+                                setProfileExp(String(t.experienceYears));
+                                setActiveSubTab("profiles");
+                              }}
+                              className="bg-amber-600/10 hover:bg-amber-600 hover:text-neutral-950 text-amber-500 border border-amber-500/20 text-[10px] px-2.5 py-1.5 rounded-xl font-bold transition duration-300"
+                            >
+                              Update Bio
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {apiTutors?.length === 0 && (
+                        <tr><td colSpan={6} className="px-4 py-6 text-center text-neutral-500">No tutors on record yet.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
 
@@ -1936,43 +1911,45 @@ export default function AdminCMS({
             {/* CURRICULUMS LIST (CMS LIST) */}
             <div className="lg:col-span-2 space-y-4">
               <h3 className="text-base font-bold text-white flex items-center">
-                <BookOpen size={16} className="text-amber-500 mr-2" /> Active Curriculum Index ({curriculums.length})
+                <BookOpen size={16} className="text-amber-500 mr-2" /> Active Curriculum Index ({apiCurriculums?.length ?? 0})
               </h3>
 
+              {curriculumLoading && <p className="text-neutral-500 text-xs text-center py-6">Loading curricula…</p>}
+
               <div className="space-y-4">
-                {curriculums.map((curr) => (
-                  <div key={curr.id} className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 space-y-4">
+                {(apiCurriculums ?? []).map((curr) => (
+                  <div key={curr.id} className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 space-y-3">
                     <div className="flex items-start justify-between">
                       <div>
                         <span className="text-[10px] bg-amber-950 text-amber-400 border border-amber-500/20 px-2.5 py-0.5 rounded-md font-bold uppercase tracking-wider">
-                          {curr.category} • {curr.difficulty}
+                          {curr.program} • {curr.level}
                         </span>
                         <h4 className="text-base font-bold text-white mt-1.5">{curr.title}</h4>
                       </div>
-                      
                       <button
-                        onClick={() => onDeleteCurriculum(curr.id)}
+                        onClick={async () => {
+                          if (!window.confirm("Delete this curriculum?")) return;
+                          try {
+                            await accountRequest("/admin/curriculum/" + curr.id, token, "DELETE");
+                            setApiCurriculums(prev => prev ? prev.filter(c => c.id !== curr.id) : prev);
+                          } catch {}
+                        }}
                         className="text-neutral-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-950/20 transition"
-                        title="Delete Course Material"
+                        title="Delete Curriculum"
                       >
                         <Trash2 size={15} />
                       </button>
                     </div>
-
-                    <p className="text-xs text-neutral-400 leading-relaxed">{curr.description}</p>
-
-                    {/* Modules Checklist */}
-                    <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 space-y-2 text-xs">
-                      <p className="font-semibold text-neutral-300 uppercase text-[10px] tracking-wider mb-2">Lesson Modules preview ({curr.modules?.length || 0})</p>
-                      {curr.modules?.map((mod) => (
-                        <div key={mod.id} className="border-l-2 border-amber-500/30 pl-3 py-1 space-y-0.5">
-                          <p className="font-bold text-neutral-200">{mod.title}</p>
-                          <p className="text-neutral-400 text-[11px] leading-relaxed">{mod.description}</p>
-                        </div>
-                      ))}
+                    <div className="text-xs text-neutral-500 font-mono">
+                      Created {new Date(curr.createdAt).toLocaleDateString()} • Status: <span className="text-amber-400">{curr.status}</span>
                     </div>
                   </div>
                 ))}
+                {apiCurriculums?.length === 0 && !curriculumLoading && (
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 text-center text-neutral-500 text-xs">
+                    No curricula yet. Create one using the form.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1991,35 +1968,44 @@ export default function AdminCMS({
               
               <div className="space-y-1.5">
                 <label className="font-bold text-neutral-300">Select Tutor Profile</label>
-                <select
-                  value={selectedTutorId}
-                  onChange={(e) => {
-                    setSelectedTutorId(e.target.value);
-                    const tut = tutors.find(t => t.id === e.target.value);
-                    if (tut) {
-                      setProfileBio(tut.bio);
-                      setProfileExp(tut.experience);
-                      setProfileSeoTitle(tut.seoTitle || "");
-                      setProfileSeoDescription(tut.seoDescription || "");
-                    }
-                  }}
-                  className="w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
-                >
-                  {tutors.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
+                {!apiTutors ? (
+                  <p className="text-xs text-neutral-500">Loading tutors…</p>
+                ) : (
+                  <select
+                    value={selectedTutorId}
+                    onChange={(e) => {
+                      setSelectedTutorId(e.target.value);
+                      const tut = apiTutors.find(t => t.accountId === e.target.value);
+                      if (tut) {
+                        setProfileBio(tut.bio ?? "");
+                        setProfileExp(String(tut.experienceYears));
+                      }
+                    }}
+                    className="w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="">— Select a tutor —</option>
+                    {apiTutors.map((t) => (
+                      <option key={t.accountId} value={t.accountId}>{t.account.fullName} ({t.account.email})</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
-              {activeTutorObj && (
-                <div className="flex items-center space-x-3 bg-neutral-950 p-4 rounded-2xl border border-neutral-800">
-                  <img src={activeTutorObj.avatar} alt={activeTutorObj.name} className="w-10 h-10 rounded-full object-cover" />
-                  <div>
-                    <p className="font-bold text-white">{activeTutorObj.name}</p>
-                    <p className="text-[10px] text-neutral-400">Languages: {activeTutorObj.languages.join(", ")}</p>
+              {selectedTutorId && apiTutors && (() => {
+                const tut = apiTutors.find(t => t.accountId === selectedTutorId);
+                if (!tut) return null;
+                return (
+                  <div className="flex items-center space-x-3 bg-neutral-950 p-4 rounded-2xl border border-neutral-800">
+                    <span className="w-10 h-10 rounded-full bg-amber-600/20 text-amber-500 flex items-center justify-center font-extrabold text-sm">
+                      {tut.account.fullName?.charAt(0) ?? "T"}
+                    </span>
+                    <div>
+                      <p className="font-bold text-white">{tut.account.fullName}</p>
+                      <p className="text-[10px] text-neutral-400">Languages: {tut.languages.join(", ")} • {tut.approvalStatus}</p>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               <div className="space-y-1.5">
                 <label className="font-bold text-neutral-300">Scholarly Experience Duration</label>
@@ -2074,14 +2060,15 @@ export default function AdminCMS({
 
               <button
                 type="submit"
-                className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-neutral-950 hover:text-white font-bold rounded-xl transition duration-300"
+                disabled={profileSaving || !selectedTutorId}
+                className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-neutral-950 hover:text-white font-bold rounded-xl transition duration-300 disabled:opacity-50"
               >
-                Update Public Profile Listing
+                {profileSaving ? "Saving…" : "Update Profile in Database"}
               </button>
 
               {profileSaved && (
                 <div className="bg-emerald-950 text-emerald-400 border border-emerald-500/25 px-4 py-2 rounded-xl text-center font-semibold animate-pulse">
-                  ✓ Profile successfully updated globally on QuranTutorsAcademy.com!
+                  ✓ Profile updated successfully in the database!
                 </div>
               )}
 
