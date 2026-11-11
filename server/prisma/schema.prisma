@@ -98,6 +98,7 @@ model Academy {
   courses          Course[]
   blogPosts        BlogPost[]
   courseEnrollments CourseEnrollment[]
+  liveClasses      LiveClass[]
 
   @@map("academies")
 }
@@ -108,6 +109,11 @@ model Account {
   emailVerifiedAt DateTime?
   passwordHash String
   fullName     String
+  phone        String?
+  country      String?
+  city         String?
+  address      String?
+  avatar       String?
   timeZone     String   @default("UTC")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -133,6 +139,8 @@ model Account {
   messagesReceived Message[]         @relation("MessagesReceived")
   enrollmentsMade   CourseEnrollment[] @relation("EnrollmentsMade")
   enrollmentsAsStudent CourseEnrollment[] @relation("EnrollmentsAsStudent")
+  liveMemberships     LiveClassMember[] @relation("LiveMemberStudent")
+  liveEnrollmentsMade LiveClassMember[] @relation("LiveMemberEnroller")
 
   @@map("accounts")
 }
@@ -206,6 +214,7 @@ model TutorProfile {
   assignments       LearningRequest[]  @relation("TutorAssignments")
   courses           Course[]           @relation("TutorCourses")
   reviews           TutorReview[]
+  liveClasses       LiveClass[]        @relation("TutorLiveClasses")
 
   @@map("tutor_profiles")
 }
@@ -579,4 +588,94 @@ model CourseEnrollment {
   @@index([academyId, status, createdAt])
   @@index([enrolledById])
   @@map("course_enrollments")
+}
+
+model LiveClass {
+  id              String       @id @default(uuid())
+  academyId       String
+  academy         Academy      @relation(fields: [academyId], references: [id], onDelete: Cascade)
+  tutorId         String
+  tutor           TutorProfile @relation("TutorLiveClasses", fields: [tutorId], references: [accountId], onDelete: Cascade)
+  title           String
+  description     String?
+  program         String
+  level           String
+  language        String
+  seats           Int
+  durationMinutes Int
+  status          String       @default("PENDING")
+  reviewNote      String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  sessions LiveClassSession[]
+  members  LiveClassMember[]
+
+  @@index([academyId, status])
+  @@index([tutorId])
+  @@map("live_classes")
+}
+
+model LiveClassSession {
+  id              String    @id @default(uuid())
+  classId         String
+  liveClass       LiveClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  startsAt        DateTime
+  durationMinutes Int
+  status          String    @default("SCHEDULED")
+  createdAt       DateTime  @default(now())
+
+  @@index([classId, startsAt])
+  @@index([startsAt])
+  @@map("live_class_sessions")
+}
+
+model LiveClassMember {
+  id           String    @id @default(uuid())
+  classId      String
+  liveClass    LiveClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      Account   @relation("LiveMemberStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  enrolledById String
+  enrolledBy   Account   @relation("LiveMemberEnroller", fields: [enrolledById], references: [id], onDelete: Cascade)
+  status       String    @default("ACTIVE")
+  createdAt    DateTime  @default(now())
+
+  @@unique([classId, studentId])
+  @@index([enrolledById])
+  @@map("live_class_members")
+}
+
+model MistakeLog {
+  id           String   @id @default(uuid())
+  academyId    String
+  roomKey      String
+  studentId    String?
+  recordedById String
+  type         String
+  description  String
+  severity     String
+  createdAt    DateTime @default(now())
+
+  @@index([roomKey, createdAt])
+  @@index([studentId, createdAt])
+  @@map("mistake_logs")
+}
+
+model LiveRecording {
+  id          String   @id @default(uuid())
+  academyId   String
+  roomKey     String
+  tutorId     String
+  title       String
+  filePath    String
+  sizeBytes   Int      @default(0)
+  durationSec Int      @default(0)
+  status      String   @default("RECORDING")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([roomKey, createdAt])
+  @@index([academyId, createdAt])
+  @@map("live_recordings")
 }

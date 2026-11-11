@@ -15,7 +15,7 @@ import { accountRequest, ApiError, clearStoredAdminToken, getStoredAdminToken } 
 // code-split into its own chunk to keep the initial bundle smaller.
 import PublicHome from "./components/PublicHome";
 import { AccountPortal, PublicTutors, VerifyEmail } from "./components/Marketplace";
-const Classroom = lazy(() => import("./components/Classroom"));
+const LiveRoom = lazy(() => import("./components/LiveRoom"));
 const TajweedQuiz = lazy(() => import("./components/TajweedQuiz"));
 const AdminCMS = lazy(() => import("./components/AdminCMS"));
 const AdminLogin = lazy(() => import("./components/AdminLogin"));
@@ -622,8 +622,9 @@ export default function App() {
             )} />
 
             {/* Live Classroom — real Jitsi-based sessions */}
-            <Route path="/classroom/demo" element={<Classroom />} />
-            <Route path="/classroom/:bookingId" element={<Classroom />} />
+            <Route path="/classroom/demo" element={<LiveRoom />} />
+            <Route path="/classroom/:kind/:id" element={<LiveRoom />} />
+            <Route path="/classroom/:id" element={<LiveRoom />} />
             {/* Tajweed Quiz */}
             <Route path="/quiz/tajweed" element={<TajweedQuiz />} />
 

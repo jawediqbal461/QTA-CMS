@@ -2,13 +2,17 @@ import { createElement, useEffect, useState, type ReactNode } from "react";
 import {
   ArrowLeft, GraduationCap, LogIn, UserPlus, Users, Sparkles, Star, Clock, Bell,
   CalendarCheck, ChevronRight, LogOut, ShieldCheck, Search, BookOpen, Wallet,
-  Award, Filter, RotateCcw, Check as CheckIcon, Globe, CheckCircle, Inbox, MessageSquare, Send,
+  Award, Filter, RotateCcw, Check as CheckIcon, Globe, CheckCircle, Inbox, MessageSquare, Send, Video, Film,
 } from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { accountRequest, ApiError, request } from "../lib/api";
 import { useSEO } from "../hooks/useSEO";
 import { TutorCoursePanel } from "./CoursesPage";
 import { EnrollmentsPanel } from "./Enrollments";
+import { TutorLiveClasses, LearnerLiveClasses, RecordingsPanel } from "./LiveClasses";
+import AccountSettings, { type AccountProfile } from "./AccountSettings";
+import Avatar, { tutorAvatarUrl } from "./Avatar";
+import TimeZonePicker, { deviceTimeZone } from "./TimeZonePicker";
 
 type Role = "TUTOR" | "GUARDIAN" | "STUDENT";
 const accountPaths = {
@@ -114,9 +118,7 @@ function Page({ title, eyebrow, children }: { title: string; eyebrow?: string; c
 function TutorCard({ tutor, detail = false }: { tutor: Tutor; detail?: boolean }) {
   return <article className={`${panel} ${!detail ? "transition hover:border-emerald-500/40" : ""}`}>
     <div className="flex items-start gap-3">
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-950 text-sm font-black text-emerald-400">
-        {tutor.account.fullName.charAt(0).toUpperCase()}
-      </div>
+      <Avatar src={tutorAvatarUrl(tutor.accountId)} name={tutor.account.fullName} />
       <div className="min-w-0 flex-1">
         {!detail ? (
           <Link className="text-base font-bold text-white transition hover:text-emerald-300" to={`/tutors/${tutor.accountId}`}>{tutor.account.fullName}</Link>
@@ -167,9 +169,7 @@ function DirectoryTutorCard({ tutor }: { tutor: DirectoryTutor }) {
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div className="relative shrink-0">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-950 text-lg font-black text-emerald-400 transition group-hover:border-emerald-500/50">
-              {tutor.account.fullName.charAt(0).toUpperCase()}
-            </div>
+            <Avatar src={tutorAvatarUrl(tutor.accountId)} name={tutor.account.fullName} className="h-14 w-14 text-lg" />
             <span className="absolute -bottom-1.5 -right-1.5 rounded-full bg-emerald-500 p-0.5 text-neutral-950 shadow">
               <CheckCircle size={10} className="fill-emerald-500" />
             </span>
@@ -503,19 +503,10 @@ function AccountForm({ role, register, onSession }: { role: Role; register: bool
   </form>;
 }
 
-type DeskTab = "overview" | "lessons" | "assignments" | "requests" | "profile" | "notifications" | "courses" | "payments" | "progress" | "calendar" | "messages" | "enrollments";
+type DeskTab = "overview" | "lessons" | "assignments" | "requests" | "profile" | "notifications" | "courses" | "payments" | "progress" | "calendar" | "messages" | "enrollments" | "liveClasses" | "recordings";
 
-const deviceTimeZone = () => {
-  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { return "UTC"; }
-};
-
-function TimeZoneList() {
-  const zones: string[] = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.("timeZone") ?? [];
-  return <datalist id="tz-options">{zones.map((zone) => <option key={zone} value={zone} />)}</datalist>;
-}
-
-function DeskSidebar({ role, fullName, email, activeTab, setActiveTab, unread, signOut }: {
-  role: Role; fullName: string; email: string; activeTab: DeskTab; setActiveTab: (tab: DeskTab) => void;
+function DeskSidebar({ role, fullName, email, avatar, activeTab, setActiveTab, unread, signOut }: {
+  role: Role; fullName: string; email: string; avatar: string | null; activeTab: DeskTab; setActiveTab: (tab: DeskTab) => void;
   unread: number; signOut: () => void;
 }) {
   const tabs: Array<{ id: DeskTab; label: string; icon: typeof CalendarCheck; count?: number }> = [
@@ -524,10 +515,12 @@ function DeskSidebar({ role, fullName, email, activeTab, setActiveTab, unread, s
     ...(role === "TUTOR" ? [{ id: "assignments" as DeskTab, label: "Assignments", icon: Inbox }] : []),
     ...(role === "TUTOR" ? [{ id: "courses" as DeskTab, label: "My Courses", icon: GraduationCap }] : []),
     ...(role === "GUARDIAN" ? [{ id: "requests" as DeskTab, label: "Tutor Requests", icon: Inbox }] : []),
+    { id: "liveClasses" as DeskTab, label: "Group Classes", icon: Video },
     ...(role !== "TUTOR" ? [{ id: "enrollments" as DeskTab, label: "Enrollments", icon: GraduationCap }] : []),
-    ...(role === "GUARDIAN" ? [{ id: "payments" as DeskTab, label: "Payment History", icon: Wallet }] : []),
+    ...(role !== "TUTOR" ? [{ id: "payments" as DeskTab, label: "Payment History", icon: Wallet }] : []),
     ...(role !== "TUTOR" ? [{ id: "progress" as DeskTab, label: "Progress Reports", icon: Award }] : []),
     { id: "calendar" as DeskTab, label: "Calendar", icon: CalendarCheck },
+    { id: "recordings" as DeskTab, label: "Recordings", icon: Film },
     { id: "messages" as DeskTab, label: "Messages", icon: MessageSquare },
     { id: "profile", label: "My profile", icon: Users },
     { id: "notifications", label: "Notifications", icon: Bell, count: unread },
@@ -535,9 +528,7 @@ function DeskSidebar({ role, fullName, email, activeTab, setActiveTab, unread, s
   return <aside className="space-y-4 lg:sticky lg:top-6">
     <div className={panel}>
       <div className="flex items-center gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-950 text-sm font-black text-emerald-400">
-          {fullName.charAt(0).toUpperCase()}
-        </div>
+        <Avatar src={avatar} name={fullName} />
         <div className="min-w-0">
           <p className="truncate text-sm font-bold text-white">{fullName}</p>
           <p className="truncate text-[11px] text-neutral-500">{email}</p>
@@ -604,7 +595,7 @@ export function AccountPortal({ role, register = false, login = false }: { role:
       window.removeEventListener("focus", refresh);
     };
   }, [deskActive]);
-  const session = useResource<{ role: string; fullName: string; email: string; timeZone: string }>(
+  const session = useResource<AccountProfile>(
     !register && !login && token ? "/auth/me" : null, token, profileVersion);
   const alerts = useResource<NotificationItem[]>(
     deskActive ? "/notifications" : null, token, notifVersion + deskVersion);
@@ -677,12 +668,12 @@ export function AccountPortal({ role, register = false, login = false }: { role:
     </div>
     <ErrorText value={session?.error} />
     {!session && <p role="status" className="text-sm text-neutral-500">Checking session…</p>}
-    {session?.data && role !== "TUTOR" && session.data.timeZone === "UTC" && deviceTimeZone() !== "UTC" && (
+    {session?.data && session.data.timeZone === "UTC" && deviceTimeZone() !== "UTC" && (
       <TimeZoneNotice token={token} fullName={session.data.fullName} onSaved={() => setProfileVersion((value) => value + 1)} />
     )}
     {session?.data && (
       <div className="lg:grid lg:grid-cols-[240px_1fr] lg:items-start lg:gap-6">
-        <DeskSidebar role={role} fullName={session.data.fullName} email={session.data.email}
+        <DeskSidebar role={role} fullName={session.data.fullName} email={session.data.email} avatar={session.data.avatar}
           activeTab={activeTab} setActiveTab={setActiveTab} unread={unread} signOut={signOut} />
         <div className="mt-6 min-w-0 space-y-6 lg:mt-0">
           {role === "TUTOR" ? <TutorWorkspace token={token} profileVersion={profileVersion} deskVersion={deskVersion}
@@ -692,7 +683,8 @@ export function AccountPortal({ role, register = false, login = false }: { role:
               timeZone={session.data.timeZone} deskVersion={deskVersion}
               activeTab={activeTab} onViewLessons={() => setActiveTab("lessons")} />}
           <div className={activeTab === "profile" ? "" : "hidden"}>
-            <DeskProfile token={token} role={role} profile={session.data} refresh={() => setProfileVersion((value) => value + 1)} />
+            <AccountSettings token={token} role={role} profile={session.data}
+              refresh={() => setProfileVersion((value) => value + 1)} onSignOut={signOut} />
           </div>
           <div className={activeTab === "notifications" ? "" : "hidden"}>
             <DeskNotifications token={token} timeZone={session.data.timeZone} alerts={alerts}
@@ -708,7 +700,7 @@ export function AccountPortal({ role, register = false, login = false }: { role:
               <GuardianRequests token={token} />
             </div>
           )}
-          {role === "GUARDIAN" && (
+          {role !== "TUTOR" && (
             <div className={activeTab === "payments" ? "" : "hidden"}>
               <GuardianPayments token={token} />
             </div>
@@ -723,8 +715,14 @@ export function AccountPortal({ role, register = false, login = false }: { role:
               <EnrollmentsPanel token={token} />
             </div>
           )}
+          <div className={activeTab === "liveClasses" ? "" : "hidden"}>
+            {role === "TUTOR" ? <TutorLiveClasses token={token} /> : <LearnerLiveClasses token={token} role={role} />}
+          </div>
           <div className={activeTab === "calendar" ? "" : "hidden"}>
             <CalendarView token={token} role={role} />
+          </div>
+          <div className={activeTab === "recordings" ? "" : "hidden"}>
+            <RecordingsPanel token={token} canDelete={role === "TUTOR"} />
           </div>
           <div className={activeTab === "messages" ? "" : "hidden"}>
             <MessagesPanel token={token} active={activeTab === "messages"} />
@@ -740,54 +738,66 @@ type UpcomingBooking = {
   tutor?: { account?: { fullName?: string } };
   student?: { fullName?: string };
 };
+type ScheduleEntry = { kind: "class"; sessionId: string; classId: string; title: string; tutorName: string; startsAt: string; durationMinutes: number; status: string };
+type CalendarItem = { id: string; startsAt: string; durationMinutes: number; label: string; href: string; group: boolean };
 
 function CalendarView({ token, role }: { token: string; role: Role }) {
-  const [bookings, setBookings] = useState<UpcomingBooking[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<CalendarItem[] | null>(null);
   const path = role === "TUTOR" ? "/tutor/bookings" : "/guardian/bookings";
 
   useEffect(() => {
-    accountRequest(path, token)
-      .then((data: UpcomingBooking[]) => {
-        const now = Date.now();
-        const upcoming = (data || [])
-          .filter(b => ["BOOKED", "RESCHEDULED"].includes(b.status) && new Date(b.scheduledAtUtc).getTime() > now)
-          .sort((a, b) => new Date(a.scheduledAtUtc).getTime() - new Date(b.scheduledAtUtc).getTime())
-          .slice(0, 20);
-        setBookings(upcoming);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, [token]);
+    let active = true;
+    Promise.all([
+      accountRequest<UpcomingBooking[]>(path, token).catch(() => [] as UpcomingBooking[]),
+      accountRequest<ScheduleEntry[]>("/live-classes/schedule", token).catch(() => [] as ScheduleEntry[]),
+    ]).then(([bookings, sessions]) => {
+      if (!active) return;
+      const now = Date.now();
+      const fromBookings = bookings
+        .filter((b) => ["BOOKED", "RESCHEDULED"].includes(b.status) && new Date(b.scheduledAtUtc).getTime() > now)
+        .map((b): CalendarItem => ({
+          id: b.id, startsAt: b.scheduledAtUtc, durationMinutes: b.durationMinutes, group: false,
+          href: `/classroom/booking/${b.id}`,
+          label: role === "TUTOR" ? (b.student?.fullName ?? "Student") : (b.tutor?.account?.fullName ?? "Tutor"),
+        }));
+      const fromClasses = sessions
+        .filter((s) => s.status === "SCHEDULED" && new Date(s.startsAt).getTime() > now)
+        .map((s): CalendarItem => ({
+          id: s.sessionId, startsAt: s.startsAt, durationMinutes: s.durationMinutes, group: true,
+          href: `/classroom/class/${s.sessionId}`, label: `${s.title} (group)${role === "TUTOR" ? "" : ` · ${s.tutorName}`}`,
+        }));
+      setItems([...fromBookings, ...fromClasses].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt)).slice(0, 40));
+    });
+    return () => { active = false; };
+  }, [path, token, role]);
 
-  const grouped: Record<string, UpcomingBooking[]> = {};
-  for (const b of bookings) {
-    const day = new Date(b.scheduledAtUtc).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-    (grouped[day] ??= []).push(b);
+  const grouped: Record<string, CalendarItem[]> = {};
+  for (const item of items ?? []) {
+    const day = new Date(item.startsAt).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    (grouped[day] ??= []).push(item);
   }
 
   return <div className={`${panel} space-y-4`}>
-    <h2 className="text-sm font-bold text-white flex items-center gap-2"><CalendarCheck size={15} className="text-emerald-400" /> Upcoming Lessons</h2>
-    {loading ? <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-neutral-800 border-t-emerald-400 rounded-full animate-spin" /></div>
+    <h2 className="text-sm font-bold text-white flex items-center gap-2"><CalendarCheck size={15} className="text-emerald-400" /> Upcoming Lessons & Classes</h2>
+    {!items ? <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-neutral-800 border-t-emerald-400 rounded-full animate-spin" /></div>
       : Object.keys(grouped).length === 0
-        ? <p className="text-neutral-500 text-sm py-6 text-center">No upcoming lessons.</p>
-        : Object.entries(grouped).map(([day, items]) => (
+        ? <p className="text-neutral-500 text-sm py-6 text-center">No upcoming lessons or classes.</p>
+        : Object.entries(grouped).map(([day, entries]) => (
           <div key={day}>
             <p className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400 mb-2">{day}</p>
             <div className="space-y-2">
-              {items.map(b => {
-                const start = new Date(b.scheduledAtUtc);
-                const end = new Date(start.getTime() + b.durationMinutes * 60000);
+              {entries.map((item) => {
+                const start = new Date(item.startsAt);
+                const end = new Date(start.getTime() + item.durationMinutes * 60000);
                 const fmt = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-                const other = role === "TUTOR"
-                  ? b.student?.fullName ?? "Student"
-                  : b.tutor?.account?.fullName ?? "Tutor";
-                return <div key={b.id} className="flex items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3">
+                const opensSoon = Date.now() >= start.getTime() - 15 * 60_000;
+                return <div key={item.id} className="flex items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-white">{fmt(start)} – {fmt(end)}</p>
-                    <p className="text-xs text-neutral-400">{other} · {b.durationMinutes} min</p>
+                    <p className="text-xs text-neutral-400">{item.label} · {item.durationMinutes} min</p>
                   </div>
-                  <span className="rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold px-2 py-0.5">Confirmed</span>
+                  {opensSoon ? <Link to={item.href} className="rounded-full bg-emerald-500 text-neutral-950 text-[10px] font-bold px-2.5 py-1">Join</Link>
+                    : <span className="rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold px-2 py-0.5">{item.group ? "Group class" : "Confirmed"}</span>}
                 </div>;
               })}
             </div>
@@ -799,7 +809,9 @@ function CalendarView({ token, role }: { token: string; role: Role }) {
 type Thread = { with: { id: string; fullName: string; role: string }; lastMessage: string; lastAt: string; unread: number };
 type Msg = { id: string; fromId: string; body: string; createdAt: string; readAt: string | null };
 
-function MessagesPanel({ token, active }: { token: string; active: boolean }) {
+const contactRole: Record<string, string> = { ACADEMY_ADMIN: "Academy team", PLATFORM_ADMIN: "Academy team", TUTOR: "Teacher", GUARDIAN: "Guardian", STUDENT: "Student" };
+
+export function MessagesPanel({ token, active }: { token: string; active: boolean }) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedName, setSelectedName] = useState("");
@@ -807,12 +819,12 @@ function MessagesPanel({ token, active }: { token: string; active: boolean }) {
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [myId, setMyId] = useState("");
-  const [contacts, setContacts] = useState<Array<{ id: string; fullName: string }>>([]);
+  const [contacts, setContacts] = useState<Array<{ id: string; fullName: string; role: string | null }>>([]);
   const [sendError, setSendError] = useState("");
 
   useEffect(() => {
     if (!active) return;
-    accountRequest<Array<{ id: string; fullName: string }>>("/messages/contacts", token).then(setContacts).catch(() => {});
+    accountRequest<Array<{ id: string; fullName: string; role: string | null }>>("/messages/contacts", token).then(setContacts).catch(() => {});
   }, [active, token]);
 
   const loadThreads = () => {
@@ -899,7 +911,7 @@ function MessagesPanel({ token, active }: { token: string; active: boolean }) {
         if (person) { setSelected(person.id); setSelectedName(person.fullName); setMessages([]); }
       }}>
         <option value="">Choose a person…</option>
-        {contacts.map((person) => <option key={person.id} value={person.id}>{person.fullName}</option>)}
+        {contacts.map((person) => <option key={person.id} value={person.id}>{person.fullName}{person.role ? ` — ${contactRole[person.role] ?? person.role}` : ""}</option>)}
       </select>
     </label>}
     {threads.length === 0
@@ -942,35 +954,6 @@ export function VerifyEmail() {
       </div>
     </div>
   </Page>;
-}
-
-function DeskProfile({ token, role, profile, refresh }: {
-  token: string; role: Role; profile: { fullName: string; email: string; timeZone: string }; refresh: () => void;
-}) {
-  const action = useAction();
-  const [saved, setSaved] = useState(false);
-  return <form id="desk-profile" className={`${panel} scroll-mt-24`} onSubmit={(event) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    setSaved(false);
-    void action.run(async () => {
-      await accountRequest("/auth/me", token, "PATCH", {
-        fullName: data.get("fullName"),
-        ...(role === "TUTOR" ? {} : { timeZone: data.get("timeZone") }),
-      });
-      setSaved(true);
-      refresh();
-    });
-  }}>
-    <h2 className="text-sm font-bold text-white">My profile</h2>
-    <p className="break-words text-neutral-400">{profile.email} · Verified email</p>
-    <label className="block">Full name<input className={input} name="fullName" required minLength={2} maxLength={120} defaultValue={profile.fullName} /></label>
-    {role !== "TUTOR" && <label className="block">Time zone (pick from the list)<input className={input} name="timeZone" list="tz-options" required defaultValue={profile.timeZone} /><TimeZoneList /></label>}
-    {role === "TUTOR" && <p className="text-sm text-neutral-400">Your teaching profile returns to admin review if you change your public name.</p>}
-    <button className={button} disabled={action.busy}>Save profile</button>
-    <ErrorText value={action.error} />
-    {saved && <p role="status">Profile saved.</p>}
-  </form>;
 }
 
 function DeskNotifications({ token, timeZone, alerts, onMarkRead }: {
@@ -1097,7 +1080,7 @@ function LessonJoin({ booking, token, role, timeZone }: { booking: Booking; toke
       });
     }}>Join lesson</button>
     {now >= opens && now < closes && (
-      <Link className={ghostLink} to={`/classroom/${booking.id}`}>
+      <Link className={ghostLink} to={`/classroom/booking/${booking.id}`}>
         <span>Open live classroom</span>
         <ChevronRight size={13} />
       </Link>
@@ -1242,8 +1225,7 @@ function TutorEditor({ profile, token, refresh }: { profile: Profile; token: str
     }}>
       <h2 className="text-sm font-bold text-white">Weekly availability</h2>
       <label className="block">Time zone (pick from the list, for example Asia/Karachi)
-        <input className={input} name="timeZone" list="tz-options" required defaultValue={profile.account.timeZone === "UTC" ? deviceTimeZone() : profile.account.timeZone} />
-        <TimeZoneList />
+        <TimeZonePicker name="timeZone" className={input} defaultValue={profile.account.timeZone === "UTC" ? deviceTimeZone() : profile.account.timeZone} />
       </label>
       {slots.map((slot, index) => (
         <div className="grid gap-2 sm:grid-cols-4" key={index}>
@@ -1354,10 +1336,16 @@ function GuardianWorkspace({ token, role, preferredTutor, deskVersion, timeZone,
       )}
       <label className="block">Available times ({timeZone})
         <select key={selectedTutor} className={input} name="scheduledAtUtc" defaultValue="" required>
-          <option value="">{slots?.data?.length ? "Choose a time" : "No times shown"}</option>
+          <option value="">{!selectedTutor ? "Choose a tutor first" : !slots ? "Loading times…" : slots.data?.length ? "Choose a time" : "No free times"}</option>
           {slots?.data?.map((slot) => <option key={slot} value={slot}>{localTime(slot, timeZone)}</option>)}
         </select>
       </label>
+      {selectedTutor && slots?.data && slots.data.length === 0 && (
+        <p role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/30 px-3.5 py-2.5 text-xs text-amber-200">
+          This tutor has no free times in the next 14 days. They may not have set their weekly availability yet, or every slot is already booked.
+          Try another tutor, or write to the academy team from the Messages tab.
+        </p>
+      )}
       <ErrorText value={bookingAction.error ?? slots?.error ?? tutors?.error ?? students?.error} />
       <div className="flex gap-4">
         <button className={button} disabled={bookingAction.busy || !slots?.data?.length || (!reschedule && !students?.data?.length)}>{reschedule ? "Save new time" : "Confirm booking"}</button>
@@ -1656,6 +1644,7 @@ type ManagedAccount = {
   status: "ACTIVE" | "SUSPENDED" | "REVOKED";
   account: {
     id: string; fullName: string; email: string; timeZone: string; managedLearner: boolean;
+    phone: string | null; country: string | null; city: string | null; address: string | null;
     tutorProfile: Pick<Profile, "approvalStatus" | "specialties" | "languages" | "experienceYears" | "hourlyRate" | "bio" | "qualifications"> | null;
     studentLinks: Array<{ guardian: { id: string; fullName: string } }>;
   };
@@ -1720,6 +1709,9 @@ export function AccountsPanel({ token }: { token: string }) {
               {account.tutorProfile && <span className={badge}>Profile {account.tutorProfile.approvalStatus}</span>}
             </div>
             <p className="mt-2 text-xs text-neutral-400">{account.managedLearner ? "Guardian-managed learner" : account.email}</p>
+            {[account.phone, [account.city, account.country].filter(Boolean).join(", "), account.address].some(Boolean) && <p className="text-[11px] text-neutral-500">
+              {[account.phone, [account.city, account.country].filter(Boolean).join(", "), account.address].filter(Boolean).join(" · ")}
+            </p>}
             <p className="text-[11px] text-neutral-600">Account ID: <code>{account.id}</code></p>
             {account.studentLinks.length > 0 && <p className="text-[11px] text-neutral-500">
               Guardian: {account.studentLinks.map(({ guardian }) => guardian.fullName).join(", ")}

@@ -46,3 +46,16 @@ directoryRouter.get("/:id/slots", asyncHandler(async (req, res) => {
   if (!slots) return res.status(404).json({ error: "Tutor is unavailable." });
   res.json(slots);
 }));
+
+// Profile photos are public only for tutors the academy has approved and listed.
+directoryRouter.get("/:id/avatar", asyncHandler(async (req, res) => {
+  const academy = await prisma.academy.findFirst({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+  const tutor = academy && await prisma.tutorProfile.findFirst({
+    where: { accountId: req.params.id, ...publishedTutorWhere(academy.id) },
+    select: { account: { select: { avatar: true } } },
+  });
+  const match = tutor?.account.avatar?.match(/^data:(image\/(?:png|jpeg|webp));base64,(.+)$/);
+  if (!match) return res.status(404).end();
+  res.set({ "Content-Type": match[1], "Cache-Control": "public, max-age=300", "X-Content-Type-Options": "nosniff" });
+  res.send(Buffer.from(match[2], "base64"));
+}));

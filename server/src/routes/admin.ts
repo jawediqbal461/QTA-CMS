@@ -124,6 +124,7 @@ adminRouter.get("/accounts", asyncHandler(async (req, res) => {
     include: {
       account: { select: {
         id: true, email: true, fullName: true, createdAt: true, timeZone: true,
+        phone: true, country: true, city: true, address: true,
         tutorProfile: { select: { academyId: true, approvalStatus: true, bio: true, qualifications: true, experienceYears: true, hourlyRate: true, specialties: true, languages: true } },
         studentLinks: { where: { guardian: { memberships: { some: { academyId: req.session!.academyId, role: "GUARDIAN" } } } },
           select: { guardian: { select: { id: true, fullName: true } } } },

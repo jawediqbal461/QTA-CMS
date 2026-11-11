@@ -23,6 +23,7 @@ export default defineConfig(() => {
         '/api': {
           target: 'http://localhost:4000',
           changeOrigin: true,
+          ws: true, // needed for the live classroom's /api/live/ws WebSocket
         },
       },
     },

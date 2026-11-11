@@ -15,32 +15,39 @@ declare global {
 // trusting the JWT's role/status claims for the token's whole lifetime.
 // This is what makes a revoked or suspended membership take effect
 // immediately, instead of only at the token's next expiry.
+type SessionCheck = { ok: true; session: SessionPayload } | { ok: false; status: number; error: string };
+
+// Shared by HTTP requests and WebSocket upgrades so both enforce the same live membership check.
+export async function checkSessionToken(token: string): Promise<SessionCheck> {
+  let payload: SessionPayload;
+  try {
+    payload = verifySession(token);
+  } catch {
+    return { ok: false, status: 401, error: "Invalid or expired session" };
+  }
+  const membership = await prisma.academyMembership.findUnique({
+    where: { academyId_accountId: { academyId: payload.academyId, accountId: payload.accountId } },
+    include: { account: { select: { emailVerifiedAt: true } } },
+  });
+  if (!membership || membership.status !== "ACTIVE") {
+    return { ok: false, status: 401, error: "Session is no longer valid" };
+  }
+  if (!membership.account.emailVerifiedAt && membership.role !== "PLATFORM_ADMIN" && membership.role !== "ACADEMY_ADMIN") {
+    return { ok: false, status: 401, error: "Verify your email before accessing the portal." };
+  }
+  return { ok: true, session: { accountId: payload.accountId, academyId: payload.academyId, role: membership.role } };
+}
+
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
   if (!token) {
     return res.status(401).json({ error: "Missing bearer token" });
   }
-
-  let payload: SessionPayload;
   try {
-    payload = verifySession(token);
-  } catch {
-    return res.status(401).json({ error: "Invalid or expired session" });
-  }
-
-  try {
-    const membership = await prisma.academyMembership.findUnique({
-      where: { academyId_accountId: { academyId: payload.academyId, accountId: payload.accountId } },
-      include: { account: { select: { emailVerifiedAt: true } } },
-    });
-    if (!membership || membership.status !== "ACTIVE") {
-      return res.status(401).json({ error: "Session is no longer valid" });
-    }
-    if (!membership.account.emailVerifiedAt && membership.role !== "PLATFORM_ADMIN" && membership.role !== "ACADEMY_ADMIN") {
-      return res.status(401).json({ error: "Verify your email before accessing the portal." });
-    }
-    req.session = { accountId: payload.accountId, academyId: payload.academyId, role: membership.role };
+    const result = await checkSessionToken(token);
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    req.session = result.session;
     next();
   } catch (err) {
     next(err);

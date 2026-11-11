@@ -304,32 +304,60 @@ authRouter.post("/login", loginLimit, asyncHandler(async (req, res) => {
   });
 }));
 
+const MAX_AVATAR_CHARS = 200_000;
+
+function profileResponse(account: {
+  id: string; email: string; fullName: string; timeZone: string; phone: string | null; country: string | null;
+  city: string | null; address: string | null; avatar: string | null;
+}, session: { role: string; academyId: string }) {
+  return {
+    id: account.id, email: account.email, fullName: account.fullName, timeZone: account.timeZone,
+    phone: account.phone, country: account.country, city: account.city, address: account.address,
+    avatar: account.avatar, role: session.role, academyId: session.academyId,
+  };
+}
+
 authRouter.get("/me", requireAuth, asyncHandler(async (req, res) => {
   const account = await prisma.account.findUnique({ where: { id: req.session!.accountId } });
   if (!account) {
     return res.status(404).json({ error: "Account not found" });
   }
-  res.json({
-    id: account.id,
-    email: account.email,
-    fullName: account.fullName,
-    timeZone: account.timeZone,
-    role: req.session!.role,
-    academyId: req.session!.academyId,
-  });
+  res.json(profileResponse(account, req.session!));
 }));
 
+const optionalLine = (max: number) => z.string().trim().max(max).optional();
+
+const profileUpdateSchema = z.object({
+  fullName: z.string().trim().min(2, "Enter your full name.").max(120),
+  timeZone: z.string().trim().max(100).optional(),
+  phone: optionalLine(40),
+  country: optionalLine(80),
+  city: optionalLine(80),
+  address: optionalLine(300),
+});
+
 authRouter.patch("/me", requireAuth, asyncHandler(async (req, res) => {
-  const parsed = z.object({ fullName: z.string().trim().min(2).max(120), timeZone: timeZoneSchema.optional() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: "Enter a valid name and IANA timezone." });
+  const parsed = profileUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Check the profile fields." });
+  const { fullName, timeZone, phone, country, city, address } = parsed.data;
+  if (timeZone !== undefined && !timeZoneSchema.safeParse(timeZone).success) {
+    return res.status(400).json({ error: "Choose a time zone from the list, for example Asia/Karachi. Formats like UTC+05:00 are not accepted." });
+  }
   const { accountId, role, academyId } = req.session!;
   const updated = await prisma.$transaction(async (tx) => {
     const previous = role === "TUTOR" ? await tx.account.findUnique({ where: { id: accountId }, select: { fullName: true } }) : null;
     const account = await tx.account.updateMany({
       where: { id: accountId, memberships: { every: { academyId } } },
-      data: { fullName: parsed.data.fullName, ...(role === "TUTOR" ? {} : { timeZone: parsed.data.timeZone }) },
+      data: {
+        fullName,
+        ...(timeZone !== undefined ? { timeZone } : {}),
+        ...(phone !== undefined ? { phone: phone || null } : {}),
+        ...(country !== undefined ? { country: country || null } : {}),
+        ...(city !== undefined ? { city: city || null } : {}),
+        ...(address !== undefined ? { address: address || null } : {}),
+      },
     });
-    if (account.count && previous && previous.fullName !== parsed.data.fullName) {
+    if (account.count && previous && previous.fullName !== fullName) {
       await tx.tutorProfile.updateMany({
         where: { accountId, academyId, approvalStatus: "APPROVED" },
         data: { approvalStatus: "PENDING" },
@@ -339,4 +367,69 @@ authRouter.patch("/me", requireAuth, asyncHandler(async (req, res) => {
   });
   if (!updated) return res.status(409).json({ error: "Contact the academy to update this shared account." });
   res.json({ saved: true });
+}));
+
+const avatarSchema = z.object({
+  image: z.string().max(MAX_AVATAR_CHARS).regex(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/),
+});
+
+authRouter.put("/me/avatar", requireAuth, asyncHandler(async (req, res) => {
+  const parsed = avatarSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Choose a PNG, JPEG or WebP image under 150 KB." });
+  await prisma.account.update({ where: { id: req.session!.accountId }, data: { avatar: parsed.data.image } });
+  res.json({ saved: true });
+}));
+
+authRouter.delete("/me/avatar", requireAuth, asyncHandler(async (req, res) => {
+  await prisma.account.update({ where: { id: req.session!.accountId }, data: { avatar: null } });
+  res.json({ removed: true });
+}));
+
+const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: registrationPassword,
+});
+
+authRouter.patch("/password", requireAuth, loginLimit, asyncHandler(async (req, res) => {
+  const parsed = passwordChangeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Enter your current password and a new one of at least 10 characters (at most 72 bytes)." });
+  const { accountId, academyId } = req.session!;
+  const account = await prisma.account.findUnique({ where: { id: accountId } });
+  if (!account || !(await bcrypt.compare(parsed.data.currentPassword, account.passwordHash))) {
+    return res.status(403).json({ error: "Your current password is not correct." });
+  }
+  await prisma.account.update({ where: { id: accountId }, data: { passwordHash: await bcrypt.hash(parsed.data.newPassword, BCRYPT_ROUNDS) } });
+  await recordAudit({ actorId: accountId, academyId, action: "auth.password_changed", targetType: "account", targetId: accountId });
+  res.json({ saved: true });
+}));
+
+const emailChangeSchema = z.object({
+  newEmail: z.string().trim().email().max(254),
+  password: z.string().min(1),
+});
+
+// The new address must be verified before the next sign-in, so a typo cannot silently lock in a wrong email.
+authRouter.patch("/email", requireAuth, loginLimit, asyncHandler(async (req, res) => {
+  if (!mailConfig()) return res.status(503).json({ error: emailUnavailable });
+  const parsed = emailChangeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Enter a valid new email address and your current password." });
+  const { accountId, academyId, role } = req.session!;
+  if (role === "ACADEMY_ADMIN" || role === "PLATFORM_ADMIN") {
+    return res.status(403).json({ error: "Administrator emails are managed by the platform owner." });
+  }
+  const account = await prisma.account.findUnique({ where: { id: accountId } });
+  if (!account || !(await bcrypt.compare(parsed.data.password, account.passwordHash))) {
+    return res.status(403).json({ error: "Your current password is not correct." });
+  }
+  const newEmail = parsed.data.newEmail.toLowerCase();
+  if (newEmail === account.email) return res.status(400).json({ error: "That is already your email address." });
+  if (await prisma.account.findUnique({ where: { email: newEmail } })) {
+    return res.status(409).json({ error: "An account with this email already exists." });
+  }
+  await prisma.$transaction(async (tx) => {
+    await tx.account.update({ where: { id: accountId }, data: { email: newEmail, emailVerifiedAt: null } });
+    await queueVerification(tx, accountId, academyId);
+  });
+  await recordAudit({ actorId: accountId, academyId, action: "auth.email_changed", targetType: "account", targetId: accountId });
+  res.json({ verificationRequired: true });
 }));

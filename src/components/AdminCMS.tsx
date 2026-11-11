@@ -4,7 +4,7 @@ import {
   Copy, Check, FileText, Globe, Zap, AlertCircle, Trash2, ArrowUpRight, HelpCircle,
   Search, Plus, Edit, BarChart3, TrendingUp, Activity, DollarSign, Clock, RefreshCw, Star,
   Users, Calendar, PieChart, Lock, Sparkles, Bold, Italic, Heading, Quote, List, ListOrdered, Image,
-  GraduationCap, ShieldCheck, UserCheck, Inbox
+  GraduationCap, ShieldCheck, UserCheck, Inbox, Video, Film
 } from "lucide-react";
 import { ARCHITECTURE_INFO, Surah, Juz, BlogPost, INITIAL_SURAHS, INITIAL_JUZ } from "../data/mockData";
 import quranIndex from "../data/quran-legacy/index.json";
@@ -12,11 +12,12 @@ import type { SurahOverride } from "../lib/content";
 import Breadcrumbs from "./Breadcrumbs";
 import { useSEO } from "../hooks/useSEO";
 import { accountRequest } from "../lib/api";
-import { AccountsPanel, TutorsPanel, TutorProfilesPanel, OperationsPanel, RequestsPanel } from "./Marketplace";
+import { AccountsPanel, TutorsPanel, TutorProfilesPanel, OperationsPanel, RequestsPanel, MessagesPanel } from "./Marketplace";
 import { ResourcesAdminPanel } from "./ResourcesPage";
 import { PaymentsAdminPanel } from "./PricingPage";
 import { CourseApprovalPanel } from "./CoursesPage";
 import { EnrollmentsAdminPanel } from "./Enrollments";
+import { LiveClassesAdminPanel, RecordingsPanel } from "./LiveClasses";
 
 // The shipped Quran text, loaded on demand so the surah editor starts from the real verses.
 const staticVersePages = import.meta.glob<{ default: { ayahs: Array<{ numberInSurah: number; arabic: string; translation: string }> } }>(
@@ -25,7 +26,7 @@ const staticVersePages = import.meta.glob<{ default: { ayahs: Array<{ numberInSu
 
 type AdminSubTab = "overview" | "architecture" | "sitemap" | "database" | "curriculum" | "profiles" | "quran_crud" | "blog_crud"
   | "accounts" | "tutor_applications" | "tutor_profiles" | "requests" | "resources" | "payments" | "courses" | "lesson_recovery" | "analytics"
-  | "demo_rooms" | "quiz_results" | "enrollments";
+  | "demo_rooms" | "quiz_results" | "enrollments" | "inbox" | "live_classes" | "recordings";
 
 interface AdminCMSProps {
   onLogout: () => void;
@@ -860,6 +861,12 @@ export default function AdminCMS({
         ? "Course Approval Queue"
         : activeSubTab === "enrollments"
         ? "Course Enrollments"
+        : activeSubTab === "inbox"
+        ? "Messages Inbox"
+        : activeSubTab === "live_classes"
+        ? "Group Classes"
+        : activeSubTab === "recordings"
+        ? "Class Recordings"
         : "Lesson Recovery & Audit Log"
     }
   ];
@@ -1042,6 +1049,39 @@ export default function AdminCMS({
               >
                 <CheckCircle size={13} />
                 <span>Quiz Results</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab("inbox")}
+                className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl transition duration-300 flex items-center space-x-2.5 ${
+                  activeSubTab === "inbox"
+                    ? "bg-sky-500 text-neutral-950 shadow-lg shadow-sky-500/10 font-extrabold"
+                    : "bg-neutral-950/80 text-neutral-400 hover:text-white border border-neutral-850 hover:bg-neutral-900"
+                }`}
+              >
+                <Inbox size={13} />
+                <span>Messages Inbox</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab("live_classes")}
+                className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl transition duration-300 flex items-center space-x-2.5 ${
+                  activeSubTab === "live_classes"
+                    ? "bg-sky-500 text-neutral-950 shadow-lg shadow-sky-500/10 font-extrabold"
+                    : "bg-neutral-950/80 text-neutral-400 hover:text-white border border-neutral-850 hover:bg-neutral-900"
+                }`}
+              >
+                <Video size={13} />
+                <span>Group Classes</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab("recordings")}
+                className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl transition duration-300 flex items-center space-x-2.5 ${
+                  activeSubTab === "recordings"
+                    ? "bg-sky-500 text-neutral-950 shadow-lg shadow-sky-500/10 font-extrabold"
+                    : "bg-neutral-950/80 text-neutral-400 hover:text-white border border-neutral-850 hover:bg-neutral-900"
+                }`}
+              >
+                <Film size={13} />
+                <span>Recordings</span>
               </button>
             </div>
           </div>
@@ -3327,6 +3367,18 @@ export default function AdminCMS({
           </div>
         )}
 
+        {activeSubTab === "live_classes" && (
+          <div className="animate-fade-in">
+            <LiveClassesAdminPanel token={token} />
+          </div>
+        )}
+
+        {activeSubTab === "recordings" && (
+          <div className="animate-fade-in max-w-3xl">
+            <RecordingsPanel token={token} canDelete />
+          </div>
+        )}
+
         {/* SUB-TAB: LESSON RECOVERY & AUDIT (live data) */}
         {activeSubTab === "lesson_recovery" && (
           <div className="animate-fade-in">
@@ -3351,6 +3403,12 @@ export default function AdminCMS({
         )}
 
         {/* SUB-TAB: TAJWEED QUIZ RESULTS */}
+        {activeSubTab === "inbox" && (
+          <div className="animate-fade-in max-w-3xl">
+            <MessagesPanel token={token} active />
+          </div>
+        )}
+
         {activeSubTab === "quiz_results" && (
           <div className="animate-fade-in">
             <QuizResultsPanel token={token} />

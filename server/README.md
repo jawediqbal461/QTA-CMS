@@ -252,3 +252,105 @@ Before opening the pilot, rehearse these steps on desktop and mobile with synthe
 3. Add and open a meeting link with an authorized account. Complete the lesson and confirm exactly one progress entry in the guardian's history.
 4. Resolve a separate past booking in Admin, confirm the status on both desks, and verify the audit actor and reason.
 5. Restore a staging dump into the separate rehearsal database and record the checks, date, and owner.
+
+## Live classroom (self-hosted WebRTC)
+
+One-to-one lessons, group classes, a shared whiteboard, a synced Quran viewer, a mistake
+logger, and browser-side recording — all peer-to-peer over WebRTC, with this API only
+relaying signaling messages over a WebSocket (`/api/live/ws`) and storing recordings on
+disk. No third-party video service (Jitsi, Zoom, etc.) is used or required.
+
+Apply migration `0013_live_classes` (group classes, sessions, mistake log, recordings) and
+`0012_account_profile` (profile photo/phone/address columns) before restarting the API.
+
+### 1. Nginx: add a WebSocket location
+
+The existing `location ^~ /api/` block (see "Expose it publicly" above) does not forward
+the `Upgrade`/`Connection` headers a WebSocket needs. Add a **second, more specific**
+block in the same `server { }` — nginx always prefers the longer `^~` prefix match, so
+exact placement doesn't matter:
+
+```nginx
+location ^~ /api/live/ws {
+    proxy_pass http://127.0.0.1:4000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+}
+```
+
+Test and reload: `nginx -t && systemctl reload nginx`.
+
+### 2. TURN server (coturn) — needed for reliable connections
+
+STUN alone (which needs no setup) lets most participants connect directly. A TURN relay
+is needed for anyone behind a strict/symmetric NAT or a school/office firewall — without
+it, those participants will see a black tile for others. Running your own coturn is the
+self-hosted option (no third-party TURN provider):
+
+```bash
+apt-get install -y coturn
+```
+
+Edit `/etc/turnserver.conf`:
+
+```
+listening-port=3478
+tls-listening-port=5349
+# A fixed, long-lived shared secret — generate once with: openssl rand -hex 32
+use-auth-secret
+static-auth-secret=<paste the openssl output here>
+realm=qurantutorsacademy.com
+# Your VPS's public IP (coturn needs the real external address, not 127.0.0.1)
+external-ip=<your-vps-public-ip>
+no-cli
+```
+
+```bash
+echo 'TURNSERVER_ENABLED=1' > /etc/default/coturn
+```
+```bash
+systemctl enable --now coturn
+```
+
+Open the firewall for `3478/udp`, `3478/tcp`, and the relay range `49152-65535/udp`
+(coturn's default) in addition to the ports Nginx already uses.
+
+Set in `server/.env`:
+
+```
+TURN_URL=turn:your-domain-or-ip:3478
+TURN_SECRET=<the same static-auth-secret from turnserver.conf>
+```
+
+The API turns this into short-lived (6-hour) TURN credentials per user — the shared
+secret itself is never sent to the browser. Restart the API after setting these
+(`npx pm2 restart qta-api`).
+
+### 3. Recordings storage
+
+Recordings are composed and recorded in the **tutor's browser** (all video tiles plus the
+whiteboard when it's in use, with everyone's audio mixed in), uploaded in 5-second chunks
+to `RECORDINGS_DIR` (default `server/uploads/recordings/<academyId>/<id>.webm`), and
+served back through a short-lived signed URL (`GET /api/live/recordings/:id/url`) — no
+Authorization header needed for the `<video>` tag itself. Make sure this directory is
+writable by the API process and sits on a disk with room to grow; a 45-minute lesson is
+roughly 250–400 MB. Deleting a recording (admin or the tutor who made it) removes both
+the database row and the file.
+
+### 4. What this does not include yet
+
+- **Server-side (always-on) recording** — only the tutor's own browser can record, and
+  only while they're in the room with it open. There's no way to record a class if the
+  tutor doesn't start it.
+- **Live admin monitoring** of in-progress classes (joining silently to observe).
+- **Mobile Safari** support for screen sharing (`getDisplayMedia` support varies).
+- Large classes (the signaling server supports up to 12 peers per room without a
+  selective-forwarding unit/SFU; beyond that, each participant's upload bandwidth becomes
+  the bottleneck since every peer sends video to every other peer directly).

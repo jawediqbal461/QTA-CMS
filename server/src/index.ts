@@ -14,6 +14,9 @@ import { reviewsRouter } from "./routes/reviews.js";
 import { messagesRouter } from "./routes/messages.js";
 import { classroomRouter } from "./routes/classroom.js";
 import { quizRouter } from "./routes/quiz.js";
+import { liveRouter } from "./routes/live.js";
+import { liveClassesRouter } from "./routes/liveClasses.js";
+import { attachLiveSocket } from "./lib/liveSocket.js";
 import { contentAdminRouter, contentPublicRouter } from "./routes/content.js";
 import { mailConfig, startNotificationWorker } from "./lib/notifications.js";
 import { prisma } from "./lib/prisma.js";
@@ -68,6 +71,8 @@ app.use("/api/tutors/:tutorId/reviews", reviewsRouter);
 app.use("/api/messages", messagesRouter);
 app.use("/api/classroom", classroomRouter);
 app.use("/api/quiz", quizRouter);
+app.use("/api/live", liveRouter);
+app.use("/api/live-classes", liveClassesRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
@@ -83,7 +88,8 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 });
 
 const port = Number(process.env.PORT) || 4000;
-app.listen(port, "127.0.0.1", () => {
+const httpServer = app.listen(port, "127.0.0.1", () => {
   console.log(`QTA CMS API listening on 127.0.0.1:${port}`);
 });
+attachLiveSocket(httpServer);
 startNotificationWorker();

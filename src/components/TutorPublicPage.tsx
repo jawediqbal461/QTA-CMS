@@ -7,6 +7,7 @@ import {
 import { useSEO } from "../hooks/useSEO";
 import { accountRequest } from "../lib/api";
 import { getStoredSession } from "../lib/session";
+import Avatar, { tutorAvatarUrl } from "./Avatar";
 
 type Slot = { weekday: number; startTime: string; endTime: string; timeZone: string };
 type Review = { id: string; rating: number; comment: string | null; createdAt: string; author: { fullName: string } };
@@ -27,10 +28,6 @@ type TutorData = {
 };
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-function avatarUrl(name: string) {
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=065f46&color=ffffff&size=200&bold=true`;
-}
 
 export default function TutorPublicPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -63,7 +60,6 @@ export default function TutorPublicPage() {
   useSEO(tutor ? {
     title: `${tutor.account.fullName} — Quran Tutor`,
     description: tutor.bio?.slice(0, 160) ?? `Learn Quran with ${tutor.account.fullName}, approved tutor specializing in ${tutor.specialties.slice(0, 2).join(" & ")}.`,
-    image: avatarUrl(tutor.account.fullName),
     schema: {
       "@type": "Person",
       name: tutor.account.fullName,
@@ -140,8 +136,7 @@ export default function TutorPublicPage() {
           <div className="bg-gradient-to-br from-emerald-950/40 via-neutral-900 to-neutral-950 border border-neutral-800 rounded-3xl p-6 md:p-8 shadow-2xl">
             <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center">
               <div className="relative shrink-0">
-                <img src={avatarUrl(name)} alt={name}
-                  className="w-24 h-24 md:w-32 md:h-32 rounded-2xl object-cover border-4 border-emerald-500/30 shadow-xl" />
+                <Avatar src={tutorAvatarUrl(tutor.accountId)} name={name} className="h-24 w-24 md:h-32 md:w-32 text-4xl border-4 border-emerald-500/30 shadow-xl" />
                 <span className="absolute -bottom-2 -right-2 bg-emerald-500 text-neutral-950 font-black px-2 py-0.5 rounded-lg text-[9px] uppercase tracking-wider flex items-center gap-0.5 shadow-lg">
                   <ShieldCheck size={9} /> Approved
                 </span>

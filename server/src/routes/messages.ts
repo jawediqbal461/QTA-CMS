@@ -113,6 +113,20 @@ messagesRouter.post("/", rateLimit({
 messagesRouter.get("/contacts", asyncHandler(async (req, res) => {
   const { accountId, academyId, role } = req.session!;
   const ids = new Set<string>();
+  const isStaff = role === "ACADEMY_ADMIN" || role === "PLATFORM_ADMIN";
+  if (isStaff) {
+    const members = await prisma.academyMembership.findMany({
+      where: { academyId, status: "ACTIVE", role: { in: ["TUTOR", "GUARDIAN", "STUDENT"] } },
+      select: { accountId: true }, take: 500,
+    });
+    for (const member of members) ids.add(member.accountId);
+  } else {
+    // Everyone can write to the academy team.
+    const admins = await prisma.academyMembership.findMany({
+      where: { academyId, status: "ACTIVE", role: "ACADEMY_ADMIN" }, select: { accountId: true },
+    });
+    for (const admin of admins) ids.add(admin.accountId);
+  }
   if (role === "TUTOR") {
     const [bookings, requests] = await Promise.all([
       prisma.booking.findMany({
@@ -146,8 +160,11 @@ messagesRouter.get("/contacts", asyncHandler(async (req, res) => {
       id: { in: [...ids] }, email: { not: { endsWith: "@learner.invalid" } },
       memberships: { some: { academyId, status: "ACTIVE" } },
     },
-    select: { id: true, fullName: true },
+    select: { id: true, fullName: true, memberships: { where: { academyId }, select: { role: true } } },
     orderBy: { fullName: "asc" },
   });
-  res.json(people);
+  res.json(people.map((person) => ({
+    id: person.id, fullName: person.fullName,
+    role: person.memberships[0]?.role ?? null,
+  })));
 }));

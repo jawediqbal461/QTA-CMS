@@ -13,42 +13,6 @@ classroomRouter.get("/demo", asyncHandler(async (_req, res) => {
   res.json(room);
 }));
 
-// GET /api/classroom/:bookingId — authenticated, returns booking info for classroom
-classroomRouter.get("/:bookingId", requireAuth, asyncHandler(async (req, res) => {
-  const { accountId, academyId, role } = req.session!;
-  const { bookingId } = req.params;
-
-  const booking = await prisma.booking.findFirst({
-    where: { id: bookingId, academyId },
-    select: {
-      id: true,
-      scheduledAtUtc: true,
-      durationMinutes: true,
-      status: true,
-      tutor: { select: { accountId: true, account: { select: { fullName: true } } } },
-      student: { select: { id: true, fullName: true } },
-    },
-  });
-
-  if (!booking) return res.status(404).json({ error: "Booking not found." });
-
-  // Only the tutor, the student, or a guardian linked to the student may access.
-  const isTutor = booking.tutor.accountId === accountId;
-  const isStudent = booking.student.id === accountId;
-  const isGuardian = !isTutor && !isStudent && role === "GUARDIAN" &&
-    !!(await prisma.guardianStudentLink.findFirst({ where: { guardianId: accountId, studentId: booking.student.id } }));
-  if (!isTutor && !isStudent && !isGuardian && role !== "ACADEMY_ADMIN" && role !== "PLATFORM_ADMIN") {
-    return res.status(403).json({ error: "Access denied." });
-  }
-
-  res.json({
-    ...booking,
-    myRole: isTutor ? "TUTOR" : "STUDENT",
-    tutorName: booking.tutor.account.fullName,
-    studentName: booking.student.fullName,
-  });
-}));
-
 // Admin demo room management
 const demoRoomBody = z.object({
   title: z.string().trim().min(1).max(100),
